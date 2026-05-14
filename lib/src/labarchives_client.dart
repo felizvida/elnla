@@ -10,23 +10,27 @@ class LabArchivesClient {
   LabArchivesClient({
     required this.accessId,
     required this.accessKey,
-    required this.uid,
+    this.uid,
     HttpClient? httpClient,
   }) : _httpClient = httpClient ?? HttpClient();
 
   final String accessId;
   final String accessKey;
-  final String uid;
+  final String? uid;
   final HttpClient _httpClient;
 
   Future<File> downloadNotebookBackup({
     required NotebookSummary notebook,
     required File destination,
   }) async {
+    final userId = uid;
+    if (userId == null || userId.isEmpty) {
+      throw const LabArchivesException('Missing LabArchives UID.');
+    }
     final uri = _elnUri(
       apiClass: 'notebooks',
       method: 'notebook_backup',
-      params: {'uid': uid, 'nbid': notebook.nbid, 'json': 'true'},
+      params: {'uid': userId, 'nbid': notebook.nbid, 'json': 'true'},
     );
     final request = await _httpClient.getUrl(uri);
     request.headers.set(HttpHeaders.userAgentHeader, 'elnla-backup/0.1');
@@ -43,13 +47,45 @@ class LabArchivesClient {
     return destination;
   }
 
+  Future<String> fetchUserAccessInfoXml({
+    required String email,
+    required String authCode,
+  }) async {
+    final uri = _elnUri(
+      apiClass: 'users',
+      method: 'user_access_info',
+      params: {'login_or_email': email, 'password': authCode},
+    );
+    final request = await _httpClient.getUrl(uri);
+    request.headers.set(HttpHeaders.userAgentHeader, 'elnla-setup/0.1');
+    final response = await request.close();
+    final body = await utf8.decodeStream(response);
+    if (response.statusCode != HttpStatus.ok) {
+      throw LabArchivesException(
+        'Authorization failed: HTTP ${response.statusCode} ${_safeError(body)}',
+      );
+    }
+    return body;
+  }
+
+  Uri buildUserLoginUri({required String redirectUri}) {
+    final expires = '${DateTime.now().millisecondsSinceEpoch}';
+    final sig = _signatureFor(redirectUri, expires);
+    return Uri.https('api.labarchives-gov.com', '/api_user_login', {
+      'akid': accessId,
+      'expires': expires,
+      'redirect_uri': redirectUri,
+      'sig': sig,
+    });
+  }
+
   Uri _elnUri({
     required String apiClass,
     required String method,
     required Map<String, String> params,
   }) {
     final expires = '${DateTime.now().millisecondsSinceEpoch}';
-    final sig = _signature(method, expires);
+    final sig = _signatureFor(method, expires);
     return Uri.https('api.labarchives-gov.com', '/api/$apiClass/$method', {
       ...params,
       'akid': accessId,
@@ -58,7 +94,7 @@ class LabArchivesClient {
     });
   }
 
-  String _signature(String method, String expires) {
+  String _signatureFor(String method, String expires) {
     final key = utf8.encode(accessKey);
     final message = utf8.encode('$accessId$method$expires');
     return base64Encode(Hmac(sha1, key).convert(message).bytes);

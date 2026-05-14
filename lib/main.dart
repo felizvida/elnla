@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'src/backup_models.dart';
 import 'src/backup_service.dart';
+import 'src/setup_models.dart';
 
 void main() {
   runApp(const ElnlaApp());
@@ -46,9 +48,14 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   BackupRecord? _selectedBackup;
   RenderNotebook? _selectedNotebook;
   RenderNode? _selectedNode;
+  LocalSetupStatus? _setupStatus;
+  BackupSchedule _schedule = BackupSchedule.disabled();
+  Timer? _scheduleTimer;
+  DateTime? _nextAutomaticBackup;
   String _status = 'Loading local LabArchives context...';
   final List<String> _log = <String>[];
   bool _busy = false;
+  bool _setupBusy = false;
 
   @override
   void initState() {
@@ -57,17 +64,32 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     _loader = _refresh();
   }
 
+  @override
+  void dispose() {
+    _scheduleTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
     try {
-      final notebooks = await _service.loadNotebookSummaries();
+      final setupStatus = await _service.loadSetupStatus();
+      final schedule = await _service.loadSchedule();
+      final notebooks = setupStatus.hasNotebookIndex
+          ? await _service.loadNotebookSummaries()
+          : <NotebookSummary>[];
       final backups = await _service.loadBackups();
       setState(() {
+        _setupStatus = setupStatus;
+        _schedule = schedule;
         _notebooks = notebooks;
         _backups = backups;
         _selectedBackup = backups.isEmpty ? null : backups.first;
-        _status = notebooks.isEmpty
+        _status = !setupStatus.isReady
+            ? 'Setup needed: connect LabArchives credentials.'
+            : notebooks.isEmpty
             ? 'No notebooks found. Run the local auth helper first.'
             : 'Ready: ${notebooks.length} notebook${notebooks.length == 1 ? '' : 's'} available.';
+        _rescheduleAutomaticBackup();
       });
       if (_selectedBackup != null) {
         await _selectBackup(_selectedBackup!);
@@ -75,6 +97,12 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     } catch (error) {
       setState(() {
         _status = 'Setup needed: $error';
+        _setupStatus = const LocalSetupStatus(
+          hasCredentials: false,
+          hasUserAccess: false,
+          hasNotebookIndex: false,
+          notebookCount: 0,
+        );
       });
     }
   }
@@ -88,36 +116,177 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     });
   }
 
-  Future<void> _runBackup() async {
+  Future<void> _runBackup({bool automatic = false}) async {
+    if (_busy || _setupBusy) {
+      if (automatic && mounted) {
+        setState(() {
+          _status = 'Automatic backup postponed while another task is running.';
+          _nextAutomaticBackup = DateTime.now().add(const Duration(minutes: 5));
+          _scheduleTimer?.cancel();
+          _scheduleTimer = Timer(
+            _nextAutomaticBackup!.difference(DateTime.now()),
+            () {
+              unawaited(_runBackup(automatic: true));
+            },
+          );
+        });
+      }
+      return;
+    }
     setState(() {
       _busy = true;
       _log.clear();
-      _status = 'Backing up ${_notebooks.length} notebooks...';
+      _status =
+          '${automatic ? 'Automatic backup' : 'Backing up'} ${_notebooks.length} notebooks...';
     });
     try {
       final records = await _service.backupAllNotebooks(
         onProgress: (message) {
-          setState(() => _log.insert(0, message));
+          if (mounted) {
+            setState(() => _log.insert(0, message));
+          }
         },
       );
       final backups = await _service.loadBackups();
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _backups = backups;
         _status =
-            'Backup complete: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
+            '${automatic ? 'Automatic backup complete' : 'Backup complete'}: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
       });
       if (records.isNotEmpty) {
         await _selectBackup(records.first);
       }
     } catch (error) {
-      setState(() {
-        _status = 'Backup failed: $error';
-      });
+      if (mounted) {
+        setState(() {
+          _status = 'Backup failed: $error';
+        });
+      }
     } finally {
-      setState(() {
-        _busy = false;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _rescheduleAutomaticBackup();
+        });
+      }
     }
+  }
+
+  Future<void> _connectWithBrowser(LabArchivesSetupInput input) async {
+    setState(() {
+      _setupBusy = true;
+      _status = 'Waiting for LabArchives authorization...';
+      _log.clear();
+    });
+    try {
+      final snapshot = await _service.authorizeWithBrowser(
+        input: input,
+        onLoginUrl: (url) {
+          Clipboard.setData(ClipboardData(text: url));
+          if (mounted) {
+            setState(() => _log.insert(0, 'Login URL copied.'));
+          }
+        },
+        onProgress: (message) {
+          if (mounted) {
+            setState(() => _log.insert(0, message));
+          }
+        },
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status =
+            'Connected: ${snapshot.notebooks.length} notebook${snapshot.notebooks.length == 1 ? '' : 's'} found.';
+      });
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _status = 'Setup failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _setupBusy = false);
+      }
+    }
+  }
+
+  Future<void> _connectWithAuthCode(LabArchivesSetupInput input) async {
+    setState(() {
+      _setupBusy = true;
+      _status = 'Exchanging LabArchives auth code...';
+      _log.clear();
+    });
+    try {
+      final snapshot = await _service.authorizeWithAuthCode(input);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status =
+            'Connected: ${snapshot.notebooks.length} notebook${snapshot.notebooks.length == 1 ? '' : 's'} found.';
+      });
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _status = 'Setup failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _setupBusy = false);
+      }
+    }
+  }
+
+  Future<void> _showScheduleDialog() async {
+    final updated = await showDialog<BackupSchedule>(
+      context: context,
+      builder: (context) => _ScheduleDialog(initial: _schedule),
+    );
+    if (updated == null) {
+      return;
+    }
+    await _service.saveSchedule(updated);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _schedule = updated;
+      _status = updated.enabled
+          ? 'Automatic backup scheduled.'
+          : 'Automatic backup disabled.';
+      _rescheduleAutomaticBackup();
+    });
+  }
+
+  void _rescheduleAutomaticBackup() {
+    _scheduleTimer?.cancel();
+    _scheduleTimer = null;
+    _nextAutomaticBackup = null;
+    if (!_schedule.enabled || !(_setupStatus?.isReady ?? false)) {
+      return;
+    }
+    final now = DateTime.now();
+    final nextRun = _schedule.nextRunAfter(now);
+    _nextAutomaticBackup = nextRun;
+    _scheduleTimer = Timer(nextRun.difference(now), () {
+      unawaited(_runBackup(automatic: true));
+    });
+  }
+
+  String? get _scheduleDetail {
+    if (!_schedule.enabled) {
+      return null;
+    }
+    final next = _nextAutomaticBackup;
+    if (next == null) {
+      return 'Automatic backup waiting for setup.';
+    }
+    return 'Next automatic backup: ${_formatDateTime(next)}';
   }
 
   @override
@@ -131,8 +300,31 @@ class _ElnlaHomeState extends State<ElnlaHome> {
             centerTitle: false,
             actions: [
               IconButton(
+                tooltip: 'LabArchives setup',
+                onPressed: _busy || _setupBusy
+                    ? null
+                    : () {
+                        setState(() {
+                          _setupStatus = const LocalSetupStatus(
+                            hasCredentials: false,
+                            hasUserAccess: false,
+                            hasNotebookIndex: false,
+                            notebookCount: 0,
+                          );
+                          _status =
+                              'Setup needed: connect LabArchives credentials.';
+                        });
+                      },
+                icon: const Icon(Icons.manage_accounts_outlined),
+              ),
+              IconButton(
+                tooltip: 'Automatic backup',
+                onPressed: _busy || _setupBusy ? null : _showScheduleDialog,
+                icon: const Icon(Icons.schedule_outlined),
+              ),
+              IconButton(
                 tooltip: 'Refresh local backups',
-                onPressed: _busy
+                onPressed: _busy || _setupBusy
                     ? null
                     : () {
                         setState(() => _loader = _refresh());
@@ -140,7 +332,9 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                 icon: const Icon(Icons.refresh),
               ),
               FilledButton.icon(
-                onPressed: _busy || _notebooks.isEmpty ? null : _runBackup,
+                onPressed: _busy || _setupBusy || _notebooks.isEmpty
+                    ? null
+                    : () => _runBackup(),
                 icon: _busy
                     ? const SizedBox.square(
                         dimension: 16,
@@ -154,10 +348,21 @@ class _ElnlaHomeState extends State<ElnlaHome> {
           ),
           body: Column(
             children: [
-              _StatusStrip(status: _status, busy: _busy),
+              _StatusStrip(
+                status: _status,
+                detail: _scheduleDetail,
+                busy: _busy || _setupBusy,
+              ),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    if (!(_setupStatus?.isReady ?? false)) {
+                      return _CredentialSetupPanel(
+                        busy: _setupBusy,
+                        onConnectBrowser: _connectWithBrowser,
+                        onConnectAuthCode: _connectWithAuthCode,
+                      );
+                    }
                     if (constraints.maxWidth < 840) {
                       return _NarrowLayout(
                         backups: _backups,
@@ -192,9 +397,14 @@ class _ElnlaHomeState extends State<ElnlaHome> {
 }
 
 class _StatusStrip extends StatelessWidget {
-  const _StatusStrip({required this.status, required this.busy});
+  const _StatusStrip({
+    required this.status,
+    required this.detail,
+    required this.busy,
+  });
 
   final String status;
+  final String? detail;
   final bool busy;
 
   @override
@@ -213,10 +423,320 @@ class _StatusStrip extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(status, maxLines: 2, overflow: TextOverflow.ellipsis),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(status, maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (detail != null)
+                  Text(
+                    detail!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CredentialSetupPanel extends StatefulWidget {
+  const _CredentialSetupPanel({
+    required this.busy,
+    required this.onConnectBrowser,
+    required this.onConnectAuthCode,
+  });
+
+  final bool busy;
+  final ValueChanged<LabArchivesSetupInput> onConnectBrowser;
+  final ValueChanged<LabArchivesSetupInput> onConnectAuthCode;
+
+  @override
+  State<_CredentialSetupPanel> createState() => _CredentialSetupPanelState();
+}
+
+class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
+  final _email = TextEditingController();
+  final _accessId = TextEditingController();
+  final _accessKey = TextEditingController();
+  final _authCode = TextEditingController();
+  bool _showKey = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _accessId.dispose();
+    _accessKey.dispose();
+    _authCode.dispose();
+    super.dispose();
+  }
+
+  LabArchivesSetupInput _input() {
+    return LabArchivesSetupInput(
+      email: _email.text,
+      accessId: _accessId.text,
+      accessKey: _accessKey.text,
+      authCode: _authCode.text,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 620;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.lock_person_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'LabArchives Setup',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _email,
+                enabled: !widget.busy,
+                autofillHints: const [AutofillHints.email],
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _accessId,
+                enabled: !widget.busy,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Access ID',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _accessKey,
+                enabled: !widget.busy,
+                obscureText: !_showKey,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Access key',
+                  prefixIcon: const Icon(Icons.key_outlined),
+                  suffixIcon: IconButton(
+                    tooltip: _showKey ? 'Hide access key' : 'Show access key',
+                    onPressed: widget.busy
+                        ? null
+                        : () => setState(() => _showKey = !_showKey),
+                    icon: Icon(
+                      _showKey
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _authCode,
+                enabled: !widget.busy,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Auth code',
+                  prefixIcon: Icon(Icons.pin_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: widget.busy
+                        ? null
+                        : () => widget.onConnectAuthCode(_input()),
+                    icon: const Icon(Icons.password_outlined),
+                    label: const Text('Use Auth Code'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: widget.busy
+                        ? null
+                        : () => widget.onConnectBrowser(_input()),
+                    icon: widget.busy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.login_outlined),
+                    label: const Text('Connect'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleDialog extends StatefulWidget {
+  const _ScheduleDialog({required this.initial});
+
+  final BackupSchedule initial;
+
+  @override
+  State<_ScheduleDialog> createState() => _ScheduleDialogState();
+}
+
+class _ScheduleDialogState extends State<_ScheduleDialog> {
+  late bool _enabled;
+  late BackupFrequency _frequency;
+  late int _minutesAfterMidnight;
+  late int _weekday;
+
+  @override
+  void initState() {
+    super.initState();
+    _enabled = widget.initial.enabled;
+    _frequency = widget.initial.frequency;
+    _minutesAfterMidnight = widget.initial.minutesAfterMidnight;
+    _weekday = widget.initial.weekday;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedTime = TimeOfDay(
+      hour: _minutesAfterMidnight ~/ 60,
+      minute: _minutesAfterMidnight % 60,
+    );
+    return AlertDialog(
+      title: const Text('Automatic Backup'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enabled'),
+              value: _enabled,
+              onChanged: (value) => setState(() => _enabled = value),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<BackupFrequency>(
+              initialValue: _frequency,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Frequency',
+                prefixIcon: Icon(Icons.repeat_outlined),
+              ),
+              items: BackupFrequency.values
+                  .map(
+                    (frequency) => DropdownMenuItem(
+                      value: frequency,
+                      child: Text(frequency.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _enabled
+                  ? (value) {
+                      if (value != null) {
+                        setState(() => _frequency = value);
+                      }
+                    }
+                  : null,
+            ),
+            if (_frequency == BackupFrequency.weekly) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: _weekday,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Day',
+                  prefixIcon: Icon(Icons.calendar_month_outlined),
+                ),
+                items: List.generate(DateTime.sunday, (index) {
+                  final weekday = index + 1;
+                  return DropdownMenuItem(
+                    value: weekday,
+                    child: Text(_weekdayName(weekday)),
+                  );
+                }),
+                onChanged: _enabled
+                    ? (value) {
+                        if (value != null) {
+                          setState(() => _weekday = value);
+                        }
+                      }
+                    : null,
+              ),
+            ],
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule_outlined),
+              title: Text(selectedTime.format(context)),
+              trailing: const Icon(Icons.edit_outlined),
+              enabled: _enabled,
+              onTap: !_enabled
+                  ? null
+                  : () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: selectedTime,
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _minutesAfterMidnight =
+                              picked.hour * 60 + picked.minute;
+                        });
+                      }
+                    },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).pop(
+              BackupSchedule(
+                enabled: _enabled,
+                frequency: _frequency,
+                minutesAfterMidnight: _minutesAfterMidnight,
+                weekday: _weekday,
+              ),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
@@ -676,4 +1196,32 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatDateTime(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final period = local.hour < 12 ? 'AM' : 'PM';
+  return '${local.month}/${local.day}/${local.year} $hour:$minute $period';
+}
+
+String _weekdayName(int weekday) {
+  switch (weekday) {
+    case DateTime.monday:
+      return 'Monday';
+    case DateTime.tuesday:
+      return 'Tuesday';
+    case DateTime.wednesday:
+      return 'Wednesday';
+    case DateTime.thursday:
+      return 'Thursday';
+    case DateTime.friday:
+      return 'Friday';
+    case DateTime.saturday:
+      return 'Saturday';
+    case DateTime.sunday:
+      return 'Sunday';
+  }
+  return 'Monday';
 }

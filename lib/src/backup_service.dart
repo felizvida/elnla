@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'backup_models.dart';
 import 'backup_parser.dart';
 import 'labarchives_client.dart';
+import 'setup_models.dart';
 
 typedef ProgressCallback = void Function(String message);
 
@@ -24,6 +26,133 @@ class BackupService {
       File(_join(credentialsDir.path, 'labarchives_user.env'));
 
   File get _notebooksFile => File(_join(credentialsDir.path, 'notebooks.tsv'));
+
+  File get _settingsFile =>
+      File(_join(credentialsDir.path, 'elnla_settings.json'));
+
+  Future<LocalSetupStatus> loadSetupStatus() async {
+    var notebookCount = 0;
+    if (await _notebooksFile.exists()) {
+      final lines = await _notebooksFile.readAsLines();
+      notebookCount = lines.length > 1 ? lines.length - 1 : 0;
+    }
+    return LocalSetupStatus(
+      hasCredentials: await _credentialFile.exists(),
+      hasUserAccess: await _userFile.exists(),
+      hasNotebookIndex: await _notebooksFile.exists(),
+      notebookCount: notebookCount,
+    );
+  }
+
+  Future<BackupSchedule> loadSchedule() async {
+    if (!await _settingsFile.exists()) {
+      return BackupSchedule.disabled();
+    }
+    try {
+      final json =
+          jsonDecode(await _settingsFile.readAsString())
+              as Map<String, Object?>;
+      final scheduleJson = json['schedule'];
+      if (scheduleJson is Map<String, Object?>) {
+        return BackupSchedule.fromJson(scheduleJson);
+      }
+    } catch (_) {
+      return BackupSchedule.disabled();
+    }
+    return BackupSchedule.disabled();
+  }
+
+  Future<void> saveSchedule(BackupSchedule schedule) async {
+    await credentialsDir.create(recursive: true);
+    await _settingsFile.writeAsString(
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert({'schedule': schedule.toJson()}),
+    );
+    await _setOwnerOnlyPermissions(_settingsFile);
+  }
+
+  Future<UserAccessSnapshot> authorizeWithAuthCode(
+    LabArchivesSetupInput input,
+  ) async {
+    final authCode = input.authCode?.trim();
+    if (authCode == null || authCode.isEmpty) {
+      throw StateError('Enter the LabArchives auth code.');
+    }
+    final cleanInput = _validatedSetupInput(input);
+    final client = LabArchivesClient(
+      accessId: cleanInput.accessId,
+      accessKey: cleanInput.accessKey,
+    );
+    final xml = await client.fetchUserAccessInfoXml(
+      email: cleanInput.email,
+      authCode: authCode,
+    );
+    final snapshot = _parseUserAccessInfo(xml);
+    await _persistSetup(cleanInput, snapshot);
+    return snapshot;
+  }
+
+  Future<UserAccessSnapshot> authorizeWithBrowser({
+    required LabArchivesSetupInput input,
+    ProgressCallback? onProgress,
+    void Function(String url)? onLoginUrl,
+  }) async {
+    final cleanInput = _validatedSetupInput(input);
+    final client = LabArchivesClient(
+      accessId: cleanInput.accessId,
+      accessKey: cleanInput.accessKey,
+    );
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final redirectUri =
+        'http://${server.address.host}:${server.port}/labarchives_callback';
+    final loginUrl = client
+        .buildUserLoginUri(redirectUri: redirectUri)
+        .toString();
+    onLoginUrl?.call(loginUrl);
+    final opened = await _openExternalUrl(loginUrl);
+    onProgress?.call(
+      opened
+          ? 'Opened LabArchives authorization in the browser.'
+          : 'Login URL copied. Paste it into a browser to continue.',
+    );
+
+    try {
+      final callback = await _waitForAuthCallback(server).timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {
+          throw TimeoutException('LabArchives authorization timed out.');
+        },
+      );
+      final error = callback['error'];
+      if (error != null && error.isNotEmpty) {
+        throw StateError('LabArchives authorization returned an error.');
+      }
+      final authCode = callback['auth_code'];
+      if (authCode == null || authCode.isEmpty) {
+        throw StateError('LabArchives did not return an auth code.');
+      }
+      final email = callback['email']?.isNotEmpty == true
+          ? callback['email']!
+          : cleanInput.email;
+      final xml = await client.fetchUserAccessInfoXml(
+        email: email,
+        authCode: authCode,
+      );
+      final snapshot = _parseUserAccessInfo(xml);
+      await _persistSetup(
+        LabArchivesSetupInput(
+          email: email,
+          accessId: cleanInput.accessId,
+          accessKey: cleanInput.accessKey,
+        ),
+        snapshot,
+      );
+      return snapshot;
+    } finally {
+      await server.close(force: true);
+    }
+  }
 
   Future<List<NotebookSummary>> loadNotebookSummaries() async {
     if (!await _notebooksFile.exists()) {
@@ -183,6 +312,185 @@ class BackupService {
           .trim();
     }
     return values;
+  }
+
+  LabArchivesSetupInput _validatedSetupInput(LabArchivesSetupInput input) {
+    final email = input.email.trim();
+    final accessId = input.accessId.trim();
+    final accessKey = input.accessKey.trim();
+    if (email.isEmpty || accessId.isEmpty || accessKey.isEmpty) {
+      throw StateError('Enter email, access ID, and access key.');
+    }
+    return LabArchivesSetupInput(
+      email: email,
+      accessId: accessId,
+      accessKey: accessKey,
+      authCode: input.authCode?.trim(),
+    );
+  }
+
+  Future<Map<String, String>> _waitForAuthCallback(HttpServer server) async {
+    await for (final request in server) {
+      final uri = request.uri;
+      if (uri.path != '/labarchives_callback') {
+        request.response
+          ..statusCode = HttpStatus.notFound
+          ..write('Not found');
+        await request.response.close();
+        continue;
+      }
+      request.response.headers.contentType = ContentType.text;
+      request.response.write(
+        'LabArchives authorization captured. You can return to ELNLA.',
+      );
+      await request.response.close();
+      return uri.queryParameters;
+    }
+    throw StateError('Authorization callback closed before completion.');
+  }
+
+  Future<bool> _openExternalUrl(String url) async {
+    try {
+      if (Platform.isMacOS) {
+        final result = await Process.run('open', [url]);
+        return result.exitCode == 0;
+      }
+      if (Platform.isWindows) {
+        final result = await Process.run('rundll32', [
+          'url.dll,FileProtocolHandler',
+          url,
+        ]);
+        return result.exitCode == 0;
+      }
+      if (Platform.isLinux) {
+        final result = await Process.run('xdg-open', [url]);
+        return result.exitCode == 0;
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
+  Future<void> _persistSetup(
+    LabArchivesSetupInput input,
+    UserAccessSnapshot snapshot,
+  ) async {
+    await credentialsDir.create(recursive: true);
+    await _credentialFile.writeAsString(
+      [
+        'LABARCHIVES_GOV_LOGIN_ID=${input.accessId}',
+        'LABARCHIVES_GOV_ACCESS_KEY=${input.accessKey}',
+        'LABARCHIVES_GOV_EMAIL=${input.email}',
+        '',
+      ].join('\n'),
+    );
+    await _setOwnerOnlyPermissions(_credentialFile);
+
+    await _userFile.writeAsString(
+      [
+        'LABARCHIVES_GOV_UID=${snapshot.uid}',
+        'LABARCHIVES_GOV_EMAIL=${input.email}',
+        '',
+      ].join('\n'),
+    );
+    await _setOwnerOnlyPermissions(_userFile);
+
+    final accessInfoFile = File(
+      _join(credentialsDir.path, 'user_access_info.xml'),
+    );
+    await accessInfoFile.writeAsString(snapshot.rawXml);
+    await _setOwnerOnlyPermissions(accessInfoFile);
+
+    final notebookRows = <String>['name\tnbid\tis_default'];
+    for (final notebook in snapshot.notebooks) {
+      notebookRows.add(
+        '${_tsv(notebook.name)}\t${_tsv(notebook.nbid)}\t${notebook.isDefault}',
+      );
+    }
+    await _notebooksFile.writeAsString('${notebookRows.join('\n')}\n');
+    await _setOwnerOnlyPermissions(_notebooksFile);
+  }
+
+  UserAccessSnapshot _parseUserAccessInfo(String xml) {
+    final uid = _xmlText(xml, 'id');
+    if (uid == null || uid.isEmpty) {
+      throw StateError(
+        'LabArchives user access response did not include a UID.',
+      );
+    }
+    final notebooksSection =
+        RegExp(
+          r'<notebooks(?:\s[^>]*)?>(.*?)</notebooks>',
+          dotAll: true,
+          caseSensitive: false,
+        ).firstMatch(xml)?.group(1) ??
+        '';
+    final notebooks = <NotebookAccess>[];
+    final notebookMatches = RegExp(
+      r'<notebook(?:\s[^>]*)?>(.*?)</notebook>',
+      dotAll: true,
+      caseSensitive: false,
+    ).allMatches(notebooksSection);
+    for (final match in notebookMatches) {
+      final block = match.group(1) ?? '';
+      final nbid = _xmlText(block, 'id');
+      if (nbid == null || nbid.isEmpty) {
+        continue;
+      }
+      final name =
+          _xmlText(block, 'name') ??
+          _xmlText(block, 'notebook-name') ??
+          'Notebook $nbid';
+      final isDefaultText =
+          (_xmlText(block, 'is-default') ?? _xmlText(block, 'is_default') ?? '')
+              .toLowerCase();
+      notebooks.add(
+        NotebookAccess(
+          name: name,
+          nbid: nbid,
+          isDefault: isDefaultText == 'true' || isDefaultText == '1',
+        ),
+      );
+    }
+    return UserAccessSnapshot(uid: uid, notebooks: notebooks, rawXml: xml);
+  }
+
+  String? _xmlText(String xml, String tag) {
+    final match = RegExp(
+      '<$tag(?:\\s[^>]*)?>(.*?)</$tag>',
+      dotAll: true,
+      caseSensitive: false,
+    ).firstMatch(xml);
+    final value = match?.group(1)?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return _decodeXml(value.replaceAll(RegExp(r'<[^>]+>'), '').trim());
+  }
+
+  String _decodeXml(String value) {
+    return value
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&amp;', '&');
+  }
+
+  String _tsv(String value) {
+    return value.replaceAll('\t', ' ').replaceAll(RegExp(r'[\r\n]+'), ' ');
+  }
+
+  Future<void> _setOwnerOnlyPermissions(File file) async {
+    if (Platform.isWindows) {
+      return;
+    }
+    try {
+      await Process.run('chmod', ['600', file.path]);
+    } catch (_) {
+      return;
+    }
   }
 
   Future<void> _extractArchive(File archive, Directory destination) async {

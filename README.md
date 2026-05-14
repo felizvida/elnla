@@ -14,6 +14,8 @@ Current implementation status:
 - macOS: Flutter desktop app builds as a native `.app`.
 - Windows: Flutter Windows project is scaffolded; build on a Windows host because Flutter does not cross-compile Windows desktop binaries from macOS.
 - iPad: Flutter iOS project is scaffolded; this Mac needs the matching Xcode iOS platform component installed before an iPad build can complete.
+- First launch: the app prompts for LabArchives email, access ID, and access key, then completes the LabArchives browser/auth-code exchange and writes local-only setup files.
+- Automatic backup: the app can store a daily or weekly backup schedule with a selected local time. Scheduled backups run while the app is open.
 
 ## Repository Rules
 
@@ -30,8 +32,9 @@ Current implementation status:
 
 ## Development App
 
-- Run `python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser` to refresh local user access XML and notebook IDs.
+- The app setup screen can refresh local user access XML and notebook IDs.
+- Run `python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser` only when you want the command-line setup fallback.
 - Run `python3 scripts/labarchives_seed_bio_test_notebook.py` to create and populate a dedicated bio-lab integration notebook.
 - Run `dart run tool/backup_once.dart` to exercise the same backup/indexing path used by the app.
 - Run `flutter build macos`, then `scripts/run_macos_app.sh` to launch the native macOS app with `ELNLA_PROJECT_ROOT` set to this repository.
-- Backups created by the app live in `backups/`, which is ignored by Git.
+- Credentials, user access XML, notebook IDs, schedule settings, and backups created by the app live in ignored local paths.
