@@ -1,11 +1,13 @@
 # LabArchives GOV API Working Reference
 
-Source PDF:
-`/Users/liux17/Library/CloudStorage/OneDrive-NationalInstitutesofHealth/CSSC/ELNs/2026_05_14_notebook_70221.pdf`
+Source PDF, local-only and ignored by Git:
+`local_docs/2026_05_14_notebook_70221.pdf`
 
 Generated from: LabArchives GOV API Complete Notebook, generated May 14, 2026 at 03:30 PM EDT.
 
 Purpose: compact working notes for future coding. Use this first before reopening the 210-page PDF. Enrich this file whenever implementation work uncovers more details, hidden API behavior, or useful coding patterns.
+
+Repository path convention: tracked files must use paths relative to the project root. Do not commit machine-specific absolute paths.
 
 ## Document Map
 
