@@ -19,6 +19,8 @@ class BackupService {
 
   Directory get backupDir => Directory(_join(root.path, 'backups'));
 
+  String get defaultBackupRootPath => backupDir.path;
+
   File get _credentialFile =>
       File(_join(credentialsDir.path, 'labarchives.env'));
 
@@ -44,30 +46,40 @@ class BackupService {
     );
   }
 
-  Future<BackupSchedule> loadSchedule() async {
+  Future<BackupSettings> loadBackupSettings() async {
     if (!await _settingsFile.exists()) {
-      return BackupSchedule.disabled();
+      return BackupSettings.defaults(defaultBackupRootPath);
     }
     try {
       final json =
           jsonDecode(await _settingsFile.readAsString())
               as Map<String, Object?>;
-      final scheduleJson = json['schedule'];
-      if (scheduleJson is Map<String, Object?>) {
-        return BackupSchedule.fromJson(scheduleJson);
-      }
+      return BackupSettings.fromJson(
+        json,
+        defaultBackupRootPath: defaultBackupRootPath,
+      );
     } catch (_) {
-      return BackupSchedule.disabled();
+      return BackupSettings.defaults(defaultBackupRootPath);
     }
-    return BackupSchedule.disabled();
+  }
+
+  Future<BackupSchedule> loadSchedule() async {
+    return (await loadBackupSettings()).schedule;
   }
 
   Future<void> saveSchedule(BackupSchedule schedule) async {
+    final settings = (await loadBackupSettings()).copyWith(schedule: schedule);
+    await saveBackupSettings(settings);
+  }
+
+  Future<void> saveBackupSettings(BackupSettings settings) async {
+    final backupRootPath = settings.backupRootPath.trim().isEmpty
+        ? defaultBackupRootPath
+        : settings.backupRootPath.trim();
+    final cleanSettings = settings.copyWith(backupRootPath: backupRootPath);
     await credentialsDir.create(recursive: true);
     await _settingsFile.writeAsString(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert({'schedule': schedule.toJson()}),
+      const JsonEncoder.withIndent('  ').convert(cleanSettings.toJson()),
     );
     await _setOwnerOnlyPermissions(_settingsFile);
   }
@@ -145,6 +157,7 @@ class BackupService {
           email: email,
           accessId: cleanInput.accessId,
           accessKey: cleanInput.accessKey,
+          backupRootPath: cleanInput.backupRootPath,
         ),
         snapshot,
       );
@@ -182,23 +195,25 @@ class BackupService {
   }
 
   Future<List<BackupRecord>> loadBackups() async {
-    if (!await backupDir.exists()) {
-      return const [];
-    }
     final records = <BackupRecord>[];
-    await for (final entity in backupDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File || !entity.path.endsWith('backup_record.json')) {
+    for (final directory in await _backupSearchDirs()) {
+      if (!await directory.exists()) {
         continue;
       }
-      try {
-        final json =
-            jsonDecode(await entity.readAsString()) as Map<String, Object?>;
-        records.add(BackupRecord.fromJson(json));
-      } catch (_) {
-        continue;
+      await for (final entity in directory.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File || !entity.path.endsWith('backup_record.json')) {
+          continue;
+        }
+        try {
+          final json =
+              jsonDecode(await entity.readAsString()) as Map<String, Object?>;
+          records.add(BackupRecord.fromJson(json));
+        } catch (_) {
+          continue;
+        }
       }
     }
     records.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -206,7 +221,7 @@ class BackupService {
   }
 
   Future<RenderNotebook> loadRenderNotebook(BackupRecord record) async {
-    final file = File(_absolute(record.renderPath));
+    final file = await _resolveBackupFile(record.renderPath);
     final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
     return RenderNotebook.fromJson(json);
   }
@@ -218,15 +233,29 @@ class BackupService {
     final client = await _client();
     final parser = BackupParser();
     final session = _timestamp();
-    final sessionDir = Directory(_join(backupDir.path, session));
-    await sessionDir.create(recursive: true);
+    final backupRoot = await _configuredBackupDir();
+    final now = DateTime.now().toUtc();
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final runDir = Directory(_join(backupRoot.path, 'runs', year, month, day));
+    await runDir.create(recursive: true);
 
     final records = <BackupRecord>[];
     for (final notebook in notebooks) {
+      Directory? notebookDir;
       try {
         onProgress?.call('Downloading ${notebook.name}');
-        final notebookDir = Directory(
-          _join(sessionDir.path, _safeName(notebook.name)),
+        notebookDir = Directory(
+          _join(
+            backupRoot.path,
+            'notebooks',
+            _safeName(notebook.name),
+            year,
+            month,
+            day,
+            session,
+          ),
         );
         await notebookDir.create(recursive: true);
         final archive = File(_join(notebookDir.path, 'notebook.7z'));
@@ -242,7 +271,7 @@ class BackupService {
         onProgress?.call('Indexing ${notebook.name}');
         final renderNotebook = await parser.parseExtractedBackup(
           extractedDir: extracted,
-          archivePath: _relative(archive.path),
+          archivePath: _relativeTo(backupRoot.path, archive.path),
         );
         final renderFile = File(
           _join(notebookDir.path, 'render_notebook.json'),
@@ -255,8 +284,8 @@ class BackupService {
               ? notebook.name
               : renderNotebook.name,
           createdAt: DateTime.now().toUtc(),
-          archivePath: _relative(archive.path),
-          renderPath: _relative(renderFile.path),
+          archivePath: _relativeTo(backupRoot.path, archive.path),
+          renderPath: _relativeTo(backupRoot.path, renderFile.path),
           pageCount: renderNotebook.nodes.where((node) => node.isPage).length,
         );
         final recordFile = File(_join(notebookDir.path, 'backup_record.json'));
@@ -266,10 +295,19 @@ class BackupService {
         records.add(record);
         onProgress?.call('Finished ${notebook.name}');
       } catch (error) {
+        if (notebookDir != null && await notebookDir.exists()) {
+          await notebookDir.delete(recursive: true);
+        }
         onProgress?.call('Skipped ${notebook.name}: $error');
       }
       await Future<void>.delayed(const Duration(seconds: 1));
     }
+    await _writeRunManifest(
+      runDir: runDir,
+      session: session,
+      records: records,
+      createdAt: now,
+    );
     if (records.isEmpty && notebooks.isNotEmpty) {
       throw StateError(
         'No notebooks could be backed up with the current user rights.',
@@ -318,13 +356,18 @@ class BackupService {
     final email = input.email.trim();
     final accessId = input.accessId.trim();
     final accessKey = input.accessKey.trim();
+    final backupRootPath = input.backupRootPath.trim();
     if (email.isEmpty || accessId.isEmpty || accessKey.isEmpty) {
       throw StateError('Enter email, access ID, and access key.');
+    }
+    if (backupRootPath.isEmpty) {
+      throw StateError('Choose a backup folder.');
     }
     return LabArchivesSetupInput(
       email: email,
       accessId: accessId,
       accessKey: accessKey,
+      backupRootPath: backupRootPath,
       authCode: input.authCode?.trim(),
     );
   }
@@ -410,6 +453,60 @@ class BackupService {
     }
     await _notebooksFile.writeAsString('${notebookRows.join('\n')}\n');
     await _setOwnerOnlyPermissions(_notebooksFile);
+
+    final currentSettings = await loadBackupSettings();
+    await saveBackupSettings(
+      currentSettings.copyWith(backupRootPath: input.backupRootPath),
+    );
+  }
+
+  Future<Directory> _configuredBackupDir() async {
+    final settings = await loadBackupSettings();
+    return Directory(settings.backupRootPath).absolute;
+  }
+
+  Future<List<Directory>> _backupSearchDirs() async {
+    final configured = await _configuredBackupDir();
+    final legacy = backupDir.absolute;
+    if (configured.path == legacy.path) {
+      return [configured];
+    }
+    return [configured, legacy];
+  }
+
+  Future<File> _resolveBackupFile(String path) async {
+    final file = File(path);
+    if (file.isAbsolute) {
+      return file;
+    }
+    final rootFile = File(_join(root.path, path));
+    if (await rootFile.exists()) {
+      return rootFile;
+    }
+    for (final directory in await _backupSearchDirs()) {
+      final candidate = File(_join(directory.path, path));
+      if (await candidate.exists()) {
+        return candidate;
+      }
+    }
+    return rootFile;
+  }
+
+  Future<void> _writeRunManifest({
+    required Directory runDir,
+    required String session,
+    required List<BackupRecord> records,
+    required DateTime createdAt,
+  }) async {
+    final manifest = File(_join(runDir.path, '$session.json'));
+    await manifest.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'id': session,
+        'createdAt': createdAt.toIso8601String(),
+        'notebookCount': records.length,
+        'records': records.map((record) => record.toJson()).toList(),
+      }),
+    );
   }
 
   UserAccessSnapshot _parseUserAccessInfo(String xml) {
@@ -524,8 +621,19 @@ class BackupService {
   }
 
   String _relative(String path) {
+    return _relativeTo(root.absolute.path, path);
+  }
+
+  String _relativeTo(String base, String path) {
+    final normalizedBase = Directory(base).absolute.path;
     final normalizedRoot = root.absolute.path;
     final normalizedPath = File(path).absolute.path;
+    if (normalizedPath.startsWith(normalizedBase)) {
+      final relative = normalizedPath.substring(normalizedBase.length);
+      return relative.startsWith(Platform.pathSeparator)
+          ? relative.substring(1)
+          : relative;
+    }
     if (normalizedPath.startsWith(normalizedRoot)) {
       final relative = normalizedPath.substring(normalizedRoot.length);
       return relative.startsWith(Platform.pathSeparator)
@@ -533,13 +641,6 @@ class BackupService {
           : relative;
     }
     return path;
-  }
-
-  String _absolute(String path) {
-    if (File(path).isAbsolute) {
-      return path;
-    }
-    return _join(root.path, path);
   }
 
   String _timestamp() {
@@ -590,9 +691,18 @@ Directory _findProjectRoot() {
   return Directory.current.absolute;
 }
 
-String _join(String first, [String? second, String? third, String? fourth]) {
+String _join(
+  String first, [
+  String? second,
+  String? third,
+  String? fourth,
+  String? fifth,
+  String? sixth,
+  String? seventh,
+  String? eighth,
+]) {
   final parts = <String>[first];
-  for (final part in [second, third, fourth]) {
+  for (final part in [second, third, fourth, fifth, sixth, seventh, eighth]) {
     if (part != null && part.isNotEmpty) {
       parts.add(part);
     }

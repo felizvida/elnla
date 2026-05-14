@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,6 +51,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   RenderNode? _selectedNode;
   LocalSetupStatus? _setupStatus;
   BackupSchedule _schedule = BackupSchedule.disabled();
+  String _backupRootPath = '';
   Timer? _scheduleTimer;
   DateTime? _nextAutomaticBackup;
   String _status = 'Loading local LabArchives context...';
@@ -61,6 +63,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   void initState() {
     super.initState();
     _service = BackupService();
+    _backupRootPath = _service.defaultBackupRootPath;
     _loader = _refresh();
   }
 
@@ -73,14 +76,15 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   Future<void> _refresh() async {
     try {
       final setupStatus = await _service.loadSetupStatus();
-      final schedule = await _service.loadSchedule();
+      final backupSettings = await _service.loadBackupSettings();
       final notebooks = setupStatus.hasNotebookIndex
           ? await _service.loadNotebookSummaries()
           : <NotebookSummary>[];
       final backups = await _service.loadBackups();
       setState(() {
         _setupStatus = setupStatus;
-        _schedule = schedule;
+        _schedule = backupSettings.schedule;
+        _backupRootPath = backupSettings.backupRootPath;
         _notebooks = notebooks;
         _backups = backups;
         _selectedBackup = backups.isEmpty ? null : backups.first;
@@ -243,20 +247,26 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   }
 
   Future<void> _showScheduleDialog() async {
-    final updated = await showDialog<BackupSchedule>(
+    final updated = await showDialog<BackupSettings>(
       context: context,
-      builder: (context) => _ScheduleDialog(initial: _schedule),
+      builder: (context) => _ScheduleDialog(
+        initial: BackupSettings(
+          schedule: _schedule,
+          backupRootPath: _backupRootPath,
+        ),
+      ),
     );
     if (updated == null) {
       return;
     }
-    await _service.saveSchedule(updated);
+    await _service.saveBackupSettings(updated);
     if (!mounted) {
       return;
     }
     setState(() {
-      _schedule = updated;
-      _status = updated.enabled
+      _schedule = updated.schedule;
+      _backupRootPath = updated.backupRootPath;
+      _status = updated.schedule.enabled
           ? 'Automatic backup scheduled.'
           : 'Automatic backup disabled.';
       _rescheduleAutomaticBackup();
@@ -279,14 +289,17 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   }
 
   String? get _scheduleDetail {
-    if (!_schedule.enabled) {
+    if (_backupRootPath.trim().isEmpty) {
       return null;
+    }
+    if (!_schedule.enabled) {
+      return 'Backup folder: $_backupRootPath';
     }
     final next = _nextAutomaticBackup;
     if (next == null) {
       return 'Automatic backup waiting for setup.';
     }
-    return 'Next automatic backup: ${_formatDateTime(next)}';
+    return 'Next automatic backup: ${_formatDateTime(next)} · $_backupRootPath';
   }
 
   @override
@@ -359,6 +372,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                     if (!(_setupStatus?.isReady ?? false)) {
                       return _CredentialSetupPanel(
                         busy: _setupBusy,
+                        initialBackupRootPath: _backupRootPath,
                         onConnectBrowser: _connectWithBrowser,
                         onConnectAuthCode: _connectWithAuthCode,
                       );
@@ -446,11 +460,13 @@ class _StatusStrip extends StatelessWidget {
 class _CredentialSetupPanel extends StatefulWidget {
   const _CredentialSetupPanel({
     required this.busy,
+    required this.initialBackupRootPath,
     required this.onConnectBrowser,
     required this.onConnectAuthCode,
   });
 
   final bool busy;
+  final String initialBackupRootPath;
   final ValueChanged<LabArchivesSetupInput> onConnectBrowser;
   final ValueChanged<LabArchivesSetupInput> onConnectAuthCode;
 
@@ -463,7 +479,14 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
   final _accessId = TextEditingController();
   final _accessKey = TextEditingController();
   final _authCode = TextEditingController();
+  late final TextEditingController _backupRoot;
   bool _showKey = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _backupRoot = TextEditingController(text: widget.initialBackupRootPath);
+  }
 
   @override
   void dispose() {
@@ -471,7 +494,15 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
     _accessId.dispose();
     _accessKey.dispose();
     _authCode.dispose();
+    _backupRoot.dispose();
     super.dispose();
+  }
+
+  Future<void> _chooseBackupFolder() async {
+    final selected = await _chooseDirectoryPath(_backupRoot.text);
+    if (selected != null && mounted) {
+      setState(() => _backupRoot.text = selected);
+    }
   }
 
   LabArchivesSetupInput _input() {
@@ -479,6 +510,7 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
       email: _email.text,
       accessId: _accessId.text,
       accessKey: _accessKey.text,
+      backupRootPath: _backupRoot.text,
       authCode: _authCode.text,
     );
   }
@@ -566,6 +598,22 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
                   prefixIcon: Icon(Icons.pin_outlined),
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _backupRoot,
+                enabled: !widget.busy,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'Backup folder',
+                  prefixIcon: const Icon(Icons.folder_outlined),
+                  suffixIcon: IconButton(
+                    tooltip: 'Choose backup folder',
+                    onPressed: widget.busy ? null : _chooseBackupFolder,
+                    icon: const Icon(Icons.drive_folder_upload_outlined),
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 10,
@@ -604,7 +652,7 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
 class _ScheduleDialog extends StatefulWidget {
   const _ScheduleDialog({required this.initial});
 
-  final BackupSchedule initial;
+  final BackupSettings initial;
 
   @override
   State<_ScheduleDialog> createState() => _ScheduleDialogState();
@@ -615,14 +663,29 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   late BackupFrequency _frequency;
   late int _minutesAfterMidnight;
   late int _weekday;
+  late final TextEditingController _backupRoot;
 
   @override
   void initState() {
     super.initState();
-    _enabled = widget.initial.enabled;
-    _frequency = widget.initial.frequency;
-    _minutesAfterMidnight = widget.initial.minutesAfterMidnight;
-    _weekday = widget.initial.weekday;
+    _enabled = widget.initial.schedule.enabled;
+    _frequency = widget.initial.schedule.frequency;
+    _minutesAfterMidnight = widget.initial.schedule.minutesAfterMidnight;
+    _weekday = widget.initial.schedule.weekday;
+    _backupRoot = TextEditingController(text: widget.initial.backupRootPath);
+  }
+
+  @override
+  void dispose() {
+    _backupRoot.dispose();
+    super.dispose();
+  }
+
+  Future<void> _chooseBackupFolder() async {
+    final selected = await _chooseDirectoryPath(_backupRoot.text);
+    if (selected != null && mounted) {
+      setState(() => _backupRoot.text = selected);
+    }
   }
 
   @override
@@ -715,6 +778,20 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                       }
                     },
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _backupRoot,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'Backup folder',
+                prefixIcon: const Icon(Icons.folder_outlined),
+                suffixIcon: IconButton(
+                  tooltip: 'Choose backup folder',
+                  onPressed: _chooseBackupFolder,
+                  icon: const Icon(Icons.drive_folder_upload_outlined),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -726,11 +803,14 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
         FilledButton(
           onPressed: () {
             Navigator.of(context).pop(
-              BackupSchedule(
-                enabled: _enabled,
-                frequency: _frequency,
-                minutesAfterMidnight: _minutesAfterMidnight,
-                weekday: _weekday,
+              BackupSettings(
+                schedule: BackupSchedule(
+                  enabled: _enabled,
+                  frequency: _frequency,
+                  minutesAfterMidnight: _minutesAfterMidnight,
+                  weekday: _weekday,
+                ),
+                backupRootPath: _backupRoot.text.trim(),
               ),
             );
           },
@@ -1196,6 +1276,57 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<String?> _chooseDirectoryPath(String initialDirectory) async {
+  final initial = initialDirectory.trim();
+  if (Platform.isMacOS) {
+    final defaultClause = Directory(initial).existsSync()
+        ? ' default location POSIX file "${_escapeAppleScript(initial)}"'
+        : '';
+    final script =
+        'set chosenFolder to choose folder with prompt "Choose backup folder"$defaultClause\n'
+        'POSIX path of chosenFolder';
+    final result = await Process.run('osascript', ['-e', script]);
+    if (result.exitCode == 0) {
+      final selected = '${result.stdout}'.trim();
+      return selected.isEmpty ? null : selected;
+    }
+  }
+  if (Platform.isWindows) {
+    const outputEncoding =
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;';
+    final initialPath = _escapePowerShellSingleQuoted(initial);
+    final script = [
+      outputEncoding,
+      'Add-Type -AssemblyName System.Windows.Forms;',
+      r'$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;',
+      r'$dialog.Description = "Choose backup folder";',
+      r'$dialog.ShowNewFolderButton = $true;',
+      "\$initial = '$initialPath';",
+      r'if ([System.IO.Directory]::Exists($initial)) { $dialog.SelectedPath = $initial; }',
+      r'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath; }',
+    ].join(' ');
+    final result = await Process.run('powershell.exe', [
+      '-NoProfile',
+      '-STA',
+      '-Command',
+      script,
+    ]);
+    if (result.exitCode == 0) {
+      final selected = '${result.stdout}'.trim();
+      return selected.isEmpty ? null : selected;
+    }
+  }
+  return null;
+}
+
+String _escapeAppleScript(String value) {
+  return value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+}
+
+String _escapePowerShellSingleQuoted(String value) {
+  return value.replaceAll("'", "''");
 }
 
 String _formatDateTime(DateTime value) {

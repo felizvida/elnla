@@ -19,12 +19,14 @@ class LabArchivesSetupInput {
     required this.email,
     required this.accessId,
     required this.accessKey,
+    required this.backupRootPath,
     this.authCode,
   });
 
   final String email;
   final String accessId;
   final String accessKey;
+  final String backupRootPath;
   final String? authCode;
 }
 
@@ -154,6 +156,48 @@ class BackupSchedule {
       );
     }
     return candidate;
+  }
+}
+
+class BackupSettings {
+  const BackupSettings({required this.schedule, required this.backupRootPath});
+
+  factory BackupSettings.defaults(String backupRootPath) {
+    return BackupSettings(
+      schedule: BackupSchedule.disabled(),
+      backupRootPath: backupRootPath,
+    );
+  }
+
+  factory BackupSettings.fromJson(
+    Map<String, Object?> json, {
+    required String defaultBackupRootPath,
+  }) {
+    final scheduleJson = json['schedule'];
+    final backupRootPath = json['backupRootPath'];
+    return BackupSettings(
+      schedule: scheduleJson is Map<String, Object?>
+          ? BackupSchedule.fromJson(scheduleJson)
+          : BackupSchedule.disabled(),
+      backupRootPath:
+          backupRootPath is String && backupRootPath.trim().isNotEmpty
+          ? backupRootPath.trim()
+          : defaultBackupRootPath,
+    );
+  }
+
+  final BackupSchedule schedule;
+  final String backupRootPath;
+
+  Map<String, Object?> toJson() {
+    return {'schedule': schedule.toJson(), 'backupRootPath': backupRootPath};
+  }
+
+  BackupSettings copyWith({BackupSchedule? schedule, String? backupRootPath}) {
+    return BackupSettings(
+      schedule: schedule ?? this.schedule,
+      backupRootPath: backupRootPath ?? this.backupRootPath,
+    );
   }
 }
 
