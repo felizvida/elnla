@@ -31,6 +31,7 @@ Current implementation status:
 
 - `labarchives_gov_api_reference.md` is the compact working reference for the LabArchives GOV API.
 - The source PDF is local-only at `local_docs/2026_05_14_notebook_70221.pdf`.
+- `docs/ELNLA_Quickstart_for_Biologists.pdf` is the short user-facing quickstart.
 
 ## Development App
 
