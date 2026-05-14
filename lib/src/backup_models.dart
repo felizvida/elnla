@@ -236,6 +236,7 @@ class RenderPart {
     required this.kindLabel,
     required this.renderText,
     required this.position,
+    this.comments = const [],
     this.attachmentName,
     this.attachmentContentType,
     this.attachmentSize,
@@ -247,6 +248,7 @@ class RenderPart {
   final String kindLabel;
   final String renderText;
   final double position;
+  final List<RenderComment> comments;
   final String? attachmentName;
   final String? attachmentContentType;
   final int? attachmentSize;
@@ -273,6 +275,7 @@ class RenderPart {
     'kindLabel': kindLabel,
     'renderText': renderText,
     'position': position,
+    'comments': comments.map((comment) => comment.toJson()).toList(),
     'attachmentName': attachmentName,
     'attachmentContentType': attachmentContentType,
     'attachmentSize': attachmentSize,
@@ -286,10 +289,44 @@ class RenderPart {
       kindLabel: json['kindLabel'] as String? ?? 'Entry part',
       renderText: json['renderText'] as String? ?? '',
       position: (json['position'] as num?)?.toDouble() ?? 0,
+      comments: (json['comments'] as List<Object?>? ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(RenderComment.fromJson)
+          .toList(),
       attachmentName: json['attachmentName'] as String?,
       attachmentContentType: json['attachmentContentType'] as String?,
       attachmentSize: json['attachmentSize'] as int?,
       attachmentOriginalPath: json['attachmentOriginalPath'] as String?,
+    );
+  }
+}
+
+class RenderComment {
+  const RenderComment({
+    required this.id,
+    required this.text,
+    required this.createdAt,
+    this.author,
+  });
+
+  final int id;
+  final String text;
+  final String createdAt;
+  final String? author;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'text': text,
+    'createdAt': createdAt,
+    'author': author,
+  };
+
+  static RenderComment fromJson(Map<String, Object?> json) {
+    return RenderComment(
+      id: json['id'] as int? ?? 0,
+      text: json['text'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      author: json['author'] as String?,
     );
   }
 }

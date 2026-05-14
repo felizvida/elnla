@@ -24,6 +24,10 @@ class BackupParser {
       File(_join(extractedDir.path, 'notebook', 'entry_parts.json')),
       'entry_part',
     );
+    final comments = await _readWrappedList(
+      File(_join(extractedDir.path, 'notebook', 'comments.json')),
+      'comment',
+    );
 
     final entryByTreeId = <int, Map<String, Object?>>{};
     for (final entry in entries) {
@@ -31,6 +35,20 @@ class BackupParser {
       if (treeId != null) {
         entryByTreeId[treeId] = entry;
       }
+    }
+
+    final commentsByPartId = <int, List<RenderComment>>{};
+    for (final rawComment in comments) {
+      final partId = _intValue(rawComment['entry_part_id']);
+      if (partId == null) {
+        continue;
+      }
+      commentsByPartId
+          .putIfAbsent(partId, () => [])
+          .add(_renderComment(rawComment));
+    }
+    for (final partComments in commentsByPartId.values) {
+      partComments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     }
 
     final partsByEntryId = <int, List<RenderPart>>{};
@@ -46,6 +64,7 @@ class BackupParser {
               rawPart,
               extractedDir: extractedDir,
               backupRootPath: backupRootPath,
+              comments: commentsByPartId[_intValue(rawPart['id'])] ?? const [],
             ),
           );
     }
@@ -272,6 +291,7 @@ class BackupParser {
     Map<String, Object?> rawPart, {
     required Directory extractedDir,
     String? backupRootPath,
+    List<RenderComment> comments = const [],
   }) async {
     final code = _intValue(rawPart['part_type']) ?? -1;
     final attachmentName = _stringValue(rawPart['attach_file_name']);
@@ -295,10 +315,23 @@ class BackupParser {
       kindLabel: attachmentName == null ? _partTypeLabel(code) : 'Attachment',
       renderText: _renderText(_stringValue(rawPart['entry_data']) ?? ''),
       position: _doubleValue(rawPart['relative_position']) ?? 0,
+      comments: comments,
       attachmentName: attachmentName,
       attachmentContentType: _stringValue(rawPart['attach_content_type']),
       attachmentSize: _intValue(rawPart['attach_file_size']),
       attachmentOriginalPath: originalPath,
+    );
+  }
+
+  RenderComment _renderComment(Map<String, Object?> rawComment) {
+    final author =
+        _stringValue(rawComment['user_name']) ??
+        _stringValue(rawComment['user_email']);
+    return RenderComment(
+      id: _intValue(rawComment['id']) ?? 0,
+      text: _renderText(_stringValue(rawComment['the_comment']) ?? ''),
+      createdAt: _stringValue(rawComment['created_at']) ?? '',
+      author: author,
     );
   }
 
@@ -334,6 +367,20 @@ class BackupParser {
     }
     var text = raw
         .replaceAll(RegExp(r'<!--RTE_[\s\S]*?-->'), '')
+        .replaceAllMapped(
+          RegExp(
+            r'''<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)</a>''',
+            caseSensitive: false,
+          ),
+          (match) {
+            final label = (match.group(2) ?? '').replaceAll(
+              RegExp(r'<[^>]+>'),
+              '',
+            );
+            final href = match.group(1) ?? '';
+            return href.isEmpty ? label : '$label ($href)';
+          },
+        )
         .replaceAll(RegExp(r'<\s*br\s*/?\s*>', caseSensitive: false), '\n')
         .replaceAll(
           RegExp(r'</\s*(p|div|li|tr|h[1-6])\s*>', caseSensitive: false),

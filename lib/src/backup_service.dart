@@ -316,7 +316,7 @@ class BackupService {
         );
         if (!contentVerification.isComplete) {
           throw StateError(
-            'Original attachment verification failed for ${notebook.name}.',
+            'Original attachment verification failed for ${notebook.name}: ${_verificationFailureSummary(contentVerification)}',
           );
         }
         final renderFile = File(
@@ -370,6 +370,22 @@ class BackupService {
       return 'full-size backup is owner-only. At NIH/NICHD, lab notebook owners are lab chiefs/PIs; ask the PI owner to run the backup.';
     }
     return message;
+  }
+
+  String _verificationFailureSummary(BackupContentVerification verification) {
+    final pieces = <String>[
+      '${verification.verifiedOriginalAttachmentCount}/${verification.expectedOriginalAttachmentCount} originals',
+      '${verification.verifiedOriginalAttachmentBytes}/${verification.expectedOriginalAttachmentBytes} bytes',
+    ];
+    if (verification.missingOriginals.isNotEmpty) {
+      pieces.add('missing ${verification.missingOriginals.take(5).join(', ')}');
+    }
+    if (verification.sizeMismatches.isNotEmpty) {
+      pieces.add(
+        'mismatched ${verification.sizeMismatches.take(5).join(', ')}',
+      );
+    }
+    return pieces.join('; ');
   }
 
   Future<LabArchivesClient> _client() async {

@@ -1426,6 +1426,10 @@ class _EntryPartView extends StatelessWidget {
                       const SizedBox(height: 8),
                       SelectableText(part.renderText),
                     ],
+                    if (part.comments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _CommentList(comments: part.comments),
+                    ],
                   ],
                 ),
               ),
@@ -1461,6 +1465,10 @@ class _EntryPartView extends StatelessWidget {
               part.renderText.isEmpty ? '(empty)' : part.renderText,
               style: isHeading ? textTheme.titleMedium : textTheme.bodyMedium,
             ),
+            if (part.comments.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _CommentList(comments: part.comments),
+            ],
           ],
         ),
       ),
@@ -1473,6 +1481,63 @@ class _EntryPartView extends StatelessWidget {
       border: Border.all(color: colors.outlineVariant),
       borderRadius: BorderRadius.circular(8),
       color: colors.surface,
+    );
+  }
+}
+
+class _CommentList extends StatelessWidget {
+  const _CommentList({required this.comments});
+
+  final List<RenderComment> comments;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: colors.primary, width: 3)),
+        color: colors.primaryContainer.withValues(alpha: 0.28),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.comment_outlined, size: 16, color: colors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  comments.length == 1 ? 'Comment' : 'Comments',
+                  style: textTheme.labelMedium?.copyWith(color: colors.primary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (final comment in comments) ...[
+              SelectableText(
+                comment.text.isEmpty ? '(empty comment)' : comment.text,
+                style: textTheme.bodySmall,
+              ),
+              if (comment.createdAt.isNotEmpty || comment.author != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    [
+                      if (comment.author != null) comment.author!,
+                      if (comment.createdAt.isNotEmpty) comment.createdAt,
+                    ].join(' · '),
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              if (comment != comments.last) const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

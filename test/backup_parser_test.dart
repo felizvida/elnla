@@ -76,6 +76,19 @@ void main() {
         },
       ]),
     );
+    await File('${dir.path}/notebook/comments.json').writeAsString(
+      jsonEncode([
+        {
+          'comment': {
+            'id': 77,
+            'entry_part_id': 2,
+            'the_comment': '<p>Reviewer comment &amp; follow-up.</p>',
+            'created_at': '2026-05-14T12:00:00Z',
+            'user_name': 'QA reviewer',
+          },
+        },
+      ]),
+    );
     await Directory(
       '${dir.path}/notebook/attachments/3/1/original',
     ).create(recursive: true);
@@ -102,6 +115,8 @@ void main() {
     expect(page.title, 'qPCR plate');
     expect(page.isPage, isTrue);
     expect(page.parts[1].renderText, 'Cycle threshold & melt curve passed.');
+    expect(page.parts[1].comments.single.text, 'Reviewer comment & follow-up.');
+    expect(page.parts[1].comments.single.author, 'QA reviewer');
     expect(
       page.parts[2].attachmentOriginalPath,
       'notebook/attachments/3/1/original/raw_image.tif',
