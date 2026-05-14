@@ -1,7 +1,7 @@
 # Local source documents and generated reference inputs
 local_docs/
 *.pdf
-!docs/*.pdf
+!docs/**/*.pdf
 
 # Local credentials and secrets
 local_credentials/

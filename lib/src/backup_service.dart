@@ -694,7 +694,12 @@ Directory _findProjectRoot() {
   for (var i = 0; i < 8; i++) {
     if (File(_join(current.path, 'pubspec.yaml')).existsSync() &&
         File(
-          _join(current.path, 'labarchives_gov_api_reference.md'),
+          _join(
+            current.path,
+            'docs',
+            'developer',
+            'labarchives_gov_api_reference.md',
+          ),
         ).existsSync()) {
       return current;
     }

@@ -1,44 +1,118 @@
+![ELNLA banner](docs/assets/elnla-banner.svg)
+
 # ELNLA
 
-ELNLA is a LabArchives GOV API project.
+ELNLA is a macOS-first LabArchives GOV backup and read-only viewer for
+electronic lab notebooks. It helps eligible notebook owners preserve the
+full-size LabArchives archive, verify original attachment files, and browse
+backed-up notebooks without writing anything back to LabArchives.
+
+## Why It Exists
+
+At NIH and NICHD, lab notebook owners are lab chiefs/PIs. LabArchives full-size
+notebook backup is owner-only: users who can view a notebook are not necessarily
+allowed to download its full-size backup archive. ELNLA makes that rule visible
+in the app and in the documentation so backup failures are easier to understand.
+
+## Screenshots
+
+![ELNLA read-only viewer](docs/assets/screenshots/elnla-viewer.png)
+
+![ELNLA automatic backup schedule](docs/assets/screenshots/elnla-schedule.png)
+
+## What It Does
+
+- Prompts for LabArchives GOV credentials on first launch.
+- Lets the user choose the local folder for routine backup copies.
+- Backs up every notebook the authenticated user owns and can back up through
+  the LabArchives API.
+- Keeps the original LabArchives `.7z` archive for preservation.
+- Extracts and indexes notebook pages for local read-only viewing.
+- Verifies reported original attachment files by byte size before marking a
+  notebook backup successful.
+- Stores credentials, user access XML, notebook IDs, schedules, and backups in
+  local ignored paths or in the user-selected backup folder.
+- Supports manual backup plus daily or weekly scheduled backup while the app is
+  open.
 
 ## Platform Strategy
 
 - macOS is the first target and primary development environment.
-- Windows should remain supported. Avoid macOS-only assumptions in core logic, file handling, path handling, and authentication storage.
-- iPad should remain supported. UI and workflows should be touch-friendly, responsive, and usable without desktop-only interactions.
-- Put platform-specific behavior behind small adapters so shared API logic stays portable.
+- Windows support is scaffolded through Flutter; build on a Windows host.
+- iPad support is scaffolded through Flutter iOS; build on a Mac with the
+  required Xcode iOS platform components installed.
+- Shared LabArchives, backup, parsing, and verification logic stays in Dart so
+  platform-specific code remains small.
 
-Current implementation status:
+Current status:
 
-- macOS: Flutter desktop app builds as a native `.app`.
-- Windows: Flutter Windows project is scaffolded; build on a Windows host because Flutter does not cross-compile Windows desktop binaries from macOS.
-- iPad: Flutter iOS project is scaffolded; this Mac needs the matching Xcode iOS platform component installed before an iPad build can complete.
-- First launch: the app prompts for LabArchives email, access ID, access key, and the local folder for routine backup copies, then completes the LabArchives browser/auth-code exchange and writes local-only setup files.
-- Automatic backup: the app can store a daily or weekly backup schedule with a selected local time. Scheduled backups run while the app is open.
-- Backup layout: new archives are grouped under `notebooks/<notebook>/<year>/<month>/<day>/<run>/`, with run manifests under `runs/<year>/<month>/<day>/`.
-- Original contents: backups keep the LabArchives `.7z` archive and verify every reported attachment against the extracted `original/` payload by byte size before marking a notebook backup successful.
-- NIH/NICHD owner rule: full-size LabArchives notebook backup is owner-only; lab notebook owners are lab chiefs/PIs.
+| Platform | Status |
+| --- | --- |
+| macOS | Native Flutter `.app` builds and runs. |
+| Windows | Project scaffolded; host build still needed. |
+| iPad | Project scaffolded; Xcode iOS platform setup still needed. |
 
-## Repository Rules
+## Repository Layout
+
+```text
+docs/
+  assets/
+    elnla-banner.svg
+    screenshots/
+  developer/
+    labarchives_gov_api_reference.md
+  user/
+    ELNLA_Quickstart_for_Biologists.pdf
+    quickstart_for_biologists.md
+lib/
+  main.dart
+  src/
+scripts/
+test/
+tool/
+```
+
+## Documentation
+
+- [Biologist quickstart PDF](docs/user/ELNLA_Quickstart_for_Biologists.pdf)
+- [Biologist quickstart source](docs/user/quickstart_for_biologists.md)
+- [LabArchives GOV API working reference](docs/developer/labarchives_gov_api_reference.md)
+- [Documentation index](docs/README.md)
+
+The original LabArchives API source PDF is intentionally local-only under
+`local_docs/` and is ignored by Git. The compact developer reference is the
+tracked substitute used during implementation.
+
+## Local-Only Data Rules
 
 - Use paths relative to the project root in tracked files.
 - Never commit machine-specific absolute paths.
-- Store real credentials, tokens, passwords, access keys, and local auth files only in ignored local paths such as `local_credentials/` or `.env.local`.
-- Commit only placeholder templates, such as `.env.example`, with fake values.
-- Keep source PDFs and other local reference inputs in `local_docs/`, which is ignored by Git.
+- Never commit real credentials, tokens, access keys, local auth XML, notebook
+  IDs, downloaded source PDFs, or raw notebook backups.
+- Keep local setup files under ignored paths such as `local_credentials/`,
+  `local_docs/`, `.env.local`, or a user-selected backup folder outside the
+  repository.
+- Commit placeholder templates only when examples are needed.
 
-## Local Reference
+## Development
 
-- `labarchives_gov_api_reference.md` is the compact working reference for the LabArchives GOV API.
-- The source PDF is local-only at `local_docs/2026_05_14_notebook_70221.pdf`.
-- `docs/ELNLA_Quickstart_for_Biologists.pdf` is the short user-facing quickstart.
+```sh
+flutter analyze
+flutter test
+flutter build macos
+scripts/run_macos_app.sh
+```
 
-## Development App
+Useful helper commands:
 
-- The app setup screen can refresh local user access XML and notebook IDs.
-- Run `python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser` only when you want the command-line setup fallback.
-- Run `python3 scripts/labarchives_seed_bio_test_notebook.py` to create and populate a dedicated bio-lab integration notebook.
-- Run `dart run tool/backup_once.dart` to exercise the same backup/indexing path used by the app.
-- Run `flutter build macos`, then `scripts/run_macos_app.sh` to launch the native macOS app with `ELNLA_PROJECT_ROOT` set to this repository.
-- Credentials, user access XML, notebook IDs, schedule settings, and backups created by the app live in ignored local paths or the user-selected backup folder.
+```sh
+python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser
+python3 scripts/labarchives_seed_bio_test_notebook.py
+dart run tool/backup_once.dart
+```
+
+For clean public screenshots, run the app with demo data:
+
+```sh
+scripts/run_macos_app.sh --demo
+```

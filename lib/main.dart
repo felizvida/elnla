@@ -64,7 +64,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     super.initState();
     _service = BackupService();
     _backupRootPath = _service.defaultBackupRootPath;
-    _loader = _refresh();
+    _loader = _demoMode ? _loadDemo() : _refresh();
   }
 
   @override
@@ -74,6 +74,10 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   }
 
   Future<void> _refresh() async {
+    if (_demoMode) {
+      await _loadDemo();
+      return;
+    }
     try {
       final setupStatus = await _service.loadSetupStatus();
       final backupSettings = await _service.loadBackupSettings();
@@ -109,6 +113,67 @@ class _ElnlaHomeState extends State<ElnlaHome> {
         );
       });
     }
+  }
+
+  Future<void> _loadDemo() async {
+    final notebook = _demoNotebook();
+    final backup = BackupRecord(
+      id: 'demo_20260514_090000Z',
+      notebookName: notebook.name,
+      createdAt: DateTime.utc(2026, 5, 14, 9),
+      archivePath:
+          'notebooks/demo_immunology_notebook/2026/05/14/demo_20260514_090000Z/notebook.7z',
+      renderPath:
+          'notebooks/demo_immunology_notebook/2026/05/14/demo_20260514_090000Z/render_notebook.json',
+      pageCount: notebook.nodes.where((node) => node.isPage).length,
+      contentVerification: const BackupContentVerification(
+        archiveBytes: 212209,
+        expectedOriginalAttachmentCount: 15,
+        verifiedOriginalAttachmentCount: 15,
+        expectedOriginalAttachmentBytes: 2591,
+        verifiedOriginalAttachmentBytes: 2591,
+        manifestPath:
+            'notebooks/demo_immunology_notebook/2026/05/14/demo_20260514_090000Z/original_files_manifest.json',
+        missingOriginals: [],
+        sizeMismatches: [],
+      ),
+    );
+    setState(() {
+      _setupStatus = const LocalSetupStatus(
+        hasCredentials: true,
+        hasUserAccess: true,
+        hasNotebookIndex: true,
+        notebookCount: 1,
+      );
+      _schedule = const BackupSchedule(
+        enabled: true,
+        frequency: BackupFrequency.daily,
+        minutesAfterMidnight: 7 * 60 + 30,
+        weekday: DateTime.monday,
+      );
+      _backupRootPath = 'ELNLA_Backups';
+      _notebooks = const [
+        NotebookSummary(
+          name: 'Demo Immunology Notebook',
+          nbid: 'demo',
+          isDefault: true,
+        ),
+      ];
+      _backups = [backup];
+      _selectedBackup = backup;
+      _selectedNotebook = notebook;
+      _selectedNode = notebook.firstPage;
+      _log
+        ..clear()
+        ..addAll([
+          'Finished Demo Immunology Notebook',
+          'Verifying full-size originals for Demo Immunology Notebook',
+          'Indexing Demo Immunology Notebook',
+          'Extracting Demo Immunology Notebook',
+        ]);
+      _status = 'Demo mode: full-size original backup verified.';
+      _rescheduleAutomaticBackup();
+    });
   }
 
   Future<void> _selectBackup(BackupRecord backup) async {
@@ -408,6 +473,116 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       },
     );
   }
+}
+
+bool get _demoMode => Platform.environment['ELNLA_DEMO_MODE'] == '1';
+
+RenderNotebook _demoNotebook() {
+  return RenderNotebook(
+    name: 'Demo Immunology Notebook',
+    createdAt: DateTime.utc(2026, 5, 14, 9),
+    archivePath:
+        'notebooks/demo_immunology_notebook/2026/05/14/demo_20260514_090000Z/notebook.7z',
+    nodes: const [
+      RenderNode(
+        id: 1,
+        parentId: 0,
+        title: 'Assays',
+        isPage: false,
+        position: 1,
+        parts: [],
+      ),
+      RenderNode(
+        id: 2,
+        parentId: 1,
+        title: 'qPCR run 001',
+        isPage: true,
+        position: 1,
+        parts: [
+          RenderPart(
+            id: 1,
+            kindCode: 0,
+            kindLabel: 'Heading',
+            renderText: 'qPCR run 001',
+            position: 1,
+          ),
+          RenderPart(
+            id: 2,
+            kindCode: 1,
+            kindLabel: 'Rich text',
+            renderText:
+                'Protocol: prepare master mix on ice, load 96-well plate, and review melt curves.\n\nControl table: NTC pass; positive control pass.',
+            position: 2,
+          ),
+          RenderPart(
+            id: 3,
+            kindCode: 5,
+            kindLabel: 'Plain text',
+            renderText:
+                'Observation: treated PBMC sample S002 shows delayed IL6 amplification; repeat extraction if Ct remains above 30.',
+            position: 3,
+          ),
+        ],
+      ),
+      RenderNode(
+        id: 3,
+        parentId: 0,
+        title: 'Imaging and Attachments',
+        isPage: false,
+        position: 2,
+        parts: [],
+      ),
+      RenderNode(
+        id: 4,
+        parentId: 3,
+        title: 'Mixed file attachments',
+        isPage: true,
+        position: 1,
+        parts: [
+          RenderPart(
+            id: 12,
+            kindCode: 2,
+            kindLabel: 'Attachment',
+            renderText: 'qPCR results table',
+            position: 1,
+            attachmentName: 'qpcr_results.csv',
+            attachmentContentType: 'text/csv',
+            attachmentSize: 77,
+          ),
+          RenderPart(
+            id: 14,
+            kindCode: 2,
+            kindLabel: 'Attachment',
+            renderText: 'FASTA sequence',
+            position: 2,
+            attachmentName: 'amplicon.fasta',
+            attachmentContentType: 'application/octet-stream',
+            attachmentSize: 88,
+          ),
+          RenderPart(
+            id: 25,
+            kindCode: 2,
+            kindLabel: 'Attachment',
+            renderText: 'QC report PDF',
+            position: 3,
+            attachmentName: 'qc_report.pdf',
+            attachmentContentType: 'application/pdf',
+            attachmentSize: 602,
+          ),
+          RenderPart(
+            id: 26,
+            kindCode: 2,
+            kindLabel: 'Attachment',
+            renderText: 'Tiny PNG signal image',
+            position: 4,
+            attachmentName: 'tiny_signal.png',
+            attachmentContentType: 'image/png',
+            attachmentSize: 68,
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 class _StatusStrip extends StatelessWidget {

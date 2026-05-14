@@ -1,6 +1,6 @@
 ---
 title: "ELNLA Quickstart for Biologists"
-subtitle: "Back up LabArchives notebooks and read them offline"
+subtitle: "Back up LabArchives GOV notebooks and read them offline"
 author: "ELNLA"
 date: "May 14, 2026"
 geometry: margin=0.75in
@@ -15,11 +15,13 @@ and reading those backups later in a read-only viewer. It is designed for lab
 records, experiment notes, protocols, tables, images, PDFs, sequence files,
 instrument output, and other bench-research attachments.
 
+![ELNLA read-only viewer](../assets/screenshots/elnla-viewer.png){width=95%}
+
 ## What ELNLA Does
 
 - Backs up every notebook that your LabArchives account is allowed to back up.
 - Keeps the original LabArchives archive file for preservation.
-- Verifies full-size original attachment files after backup.
+- Verifies full-size original attachment files after backup by byte size.
 - Creates a readable local copy for browsing pages and entries.
 - Lets you schedule routine backups while the app is open.
 - Stores credentials and backups locally, not in GitHub.
@@ -83,6 +85,8 @@ The manifest is named `original_files_manifest.json`. It includes relative file
 paths, expected byte counts, actual byte counts, and SHA-256 checksums.
 
 ## Set Automatic Backups
+
+![Automatic backup schedule](../assets/screenshots/elnla-schedule.png){width=80%}
 
 1. Click the schedule button in the toolbar.
 2. Turn `Enabled` on.
