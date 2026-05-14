@@ -9,6 +9,8 @@ Purpose: compact working notes for future coding. Use this first before reopenin
 
 Repository path convention: tracked files must use paths relative to the project root. Do not commit machine-specific absolute paths.
 
+Credential convention: real credentials, tokens, passwords, access keys, local auth files, and downloaded source documents must stay in ignored local paths such as `local_credentials/`, `.env.local`, or `local_docs/`. GitHub should only receive placeholder templates such as `.env.example` with fake values.
+
 ## Document Map
 
 - Pages 4-7: terms, overview, requirements, best practices.

@@ -1,3 +1,24 @@
 # Local source documents and generated reference inputs
 local_docs/
 *.pdf
+
+# Local credentials and secrets
+local_credentials/
+credentials/
+secrets/
+.env
+.env.*
+!.env.example
+!.env.template
+.envrc
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*.auth
+*.apikey
+*.secret
+*.secrets
+*.credentials
