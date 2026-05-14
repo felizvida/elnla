@@ -33,6 +33,11 @@ You need:
 - Your LabArchives API access key.
 - A local folder where routine backup copies should be saved.
 
+At NIH and NICHD, lab notebook ownership is restricted to lab chiefs, also known
+as PIs. The LabArchives full-size notebook backup API is owner-only. If you can
+see a notebook but you are not the PI owner, ELNLA can list it but cannot
+download its full-size backup archive.
+
 Choose a backup folder that is easy to protect and easy to find. A good pattern
 is to create a dedicated folder named `ELNLA_Backups` in a secure local or
 approved institutional storage location.
@@ -61,7 +66,8 @@ code into the setup screen and click `Use Auth Code`.
 
 ELNLA may skip notebooks that are visible to you but not eligible for API backup
 with your current permissions. This does not mean the backup system failed. It
-means LabArchives did not grant backup rights for that notebook.
+means LabArchives did not grant backup rights for that notebook. At NIH/NICHD,
+ask the lab chief or PI owner to run the backup for that notebook.
 
 ## Confirm Full-Size Originals
 
@@ -145,7 +151,8 @@ Use the viewer to:
 `Setup needed`: Connect LabArchives credentials again from the setup screen.
 
 `Skipped notebook`: Your account can see the notebook, but LabArchives did not
-grant API backup rights for it.
+grant API backup rights for it. At NIH/NICHD, full-size backup is owner-only,
+and the notebook owner should be the lab chief or PI.
 
 `Original attachment verification failed`: ELNLA did not find every full-size
 original attachment or the byte sizes did not match. Run backup again. If it

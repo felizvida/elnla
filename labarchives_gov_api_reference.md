@@ -401,6 +401,7 @@ Append notes here as coding work reveals practical behavior.
 - ELNLA backup storage convention: the user-selected backup folder contains `notebooks/<notebook>/<year>/<month>/<day>/<run>/` for archives, extracted JSON, render sidecars, and per-notebook records; `runs/<year>/<month>/<day>/` stores run manifests.
 - Full-size original-content rule: never pass `no_attachments=true` to `notebooks::notebook_backup`. For every attachment in `entry_parts.json`, verify `notebook/attachments/<entry-part-id>/<version>/original/<filename>` exists and matches `attach_file_size`; write `original_files_manifest.json` with relative paths, sizes, and SHA-256 hashes.
 - Backup rights are stricter than notebook visibility. On May 14, 2026, visible non-owned notebooks returned ELN error `4547` with "does not have rights to perform requested action"; the app treats these as skipped notebooks during "backup all owned/backup-allowed notebooks."
+- NIH/NICHD policy context: lab notebook owners are lab chiefs/PIs, and only the notebook owner can use the full-size LabArchives backup API for that notebook. Users who can view a notebook but are not the PI owner should expect backup API denial.
 - Dedicated integration notebook seeded on May 14, 2026 with headings, rich text, plain text, comments, folders/pages, and 15 bio-lab attachments covering CSV, TSV, FASTA, VCF, BED, GenBank, JSON, XML, Markdown, HTML, notebook, SVG, TXT, PDF, and PNG payloads.
 - Keep UID, organization ID, and lab ID discovery calls explicit:
   - ELN: `user_access_info` or `user_info_via_id`.

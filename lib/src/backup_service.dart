@@ -314,7 +314,7 @@ class BackupService {
         if (notebookDir != null && await notebookDir.exists()) {
           await notebookDir.delete(recursive: true);
         }
-        onProgress?.call('Skipped ${notebook.name}: $error');
+        onProgress?.call('Skipped ${notebook.name}: ${_skipReason(error)}');
       }
       await Future<void>.delayed(const Duration(seconds: 1));
     }
@@ -326,10 +326,19 @@ class BackupService {
     );
     if (records.isEmpty && notebooks.isNotEmpty) {
       throw StateError(
-        'No notebooks could be backed up with the current user rights.',
+        'No notebooks could be backed up with the current user rights. At NIH/NICHD, full-size notebook backup is owner-only, and lab notebook owners are lab chiefs/PIs.',
       );
     }
     return records;
+  }
+
+  String _skipReason(Object error) {
+    final message = error.toString();
+    if (message.contains('code 4547') ||
+        message.toLowerCase().contains('does not have rights')) {
+      return 'full-size backup is owner-only. At NIH/NICHD, lab notebook owners are lab chiefs/PIs; ask the PI owner to run the backup.';
+    }
+    return message;
   }
 
   Future<LabArchivesClient> _client() async {

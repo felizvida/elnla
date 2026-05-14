@@ -18,6 +18,7 @@ Current implementation status:
 - Automatic backup: the app can store a daily or weekly backup schedule with a selected local time. Scheduled backups run while the app is open.
 - Backup layout: new archives are grouped under `notebooks/<notebook>/<year>/<month>/<day>/<run>/`, with run manifests under `runs/<year>/<month>/<day>/`.
 - Original contents: backups keep the LabArchives `.7z` archive and verify every reported attachment against the extracted `original/` payload by byte size before marking a notebook backup successful.
+- NIH/NICHD owner rule: full-size LabArchives notebook backup is owner-only; lab notebook owners are lab chiefs/PIs.
 
 ## Repository Rules
 
