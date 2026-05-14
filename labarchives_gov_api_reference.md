@@ -392,6 +392,10 @@ Append notes here as coding work reveals practical behavior.
 - Keep ELN, Scheduler, and Inventory auth helpers separate. Their signature method string and hash algorithm differ.
 - ELN credential-auth smoke test confirmed on May 14, 2026: `utilities::promo_message` returned HTTP 200 using Base64 HMAC-SHA1 over `<akid>promo_message<expires>`, with the access password as the HMAC key.
 - Credential-authenticated utility calls can prove the access key works, but writing `helloworld` as an ELN entry requires additional user/notebook/page context: `uid`, `nbid`, and `pid`.
+- Local auth helper: `scripts/labarchives_auth_flow.py` opens the LabArchives API login URL via a localhost callback, exchanges `auth_code` with `users::user_access_info`, and saves raw XML under ignored `local_credentials/`.
+- `users::user_access_info` response uses top-level `<id>` for the API `uid`; each `<notebooks><notebook>` contains notebook `<id>` values used as `nbid`.
+- `tree_tools::get_tree_level` response uses `<level-nodes><level-node>`. Each node has `<tree-id>`, `<display-text>`, and `<is-page>`. A node with `<is-page>true</is-page>` can be used as `pid` for `entries::add_entry`.
+- ELN write smoke test confirmed on May 14, 2026: `entries::add_entry` with `part_type=plain text entry` and `entry_data=helloworld` returned HTTP 200 and an entry ID on a test notebook page.
 - Keep UID, organization ID, and lab ID discovery calls explicit:
   - ELN: `user_access_info` or `user_info_via_id`.
   - Scheduler: `GET /v1/me`.

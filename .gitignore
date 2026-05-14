@@ -22,3 +22,7 @@ secrets/
 *.secret
 *.secrets
 *.credentials
+
+# Python local artifacts
+__pycache__/
+*.py[cod]
