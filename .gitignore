@@ -26,3 +26,14 @@ secrets/
 # Python local artifacts
 __pycache__/
 *.py[cod]
+
+# Flutter/Dart local artifacts
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.idea/
+*.iml
+
+# App-created local backups
+backups/

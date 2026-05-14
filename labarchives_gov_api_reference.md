@@ -396,6 +396,9 @@ Append notes here as coding work reveals practical behavior.
 - `users::user_access_info` response uses top-level `<id>` for the API `uid`; each `<notebooks><notebook>` contains notebook `<id>` values used as `nbid`.
 - `tree_tools::get_tree_level` response uses `<level-nodes><level-node>`. Each node has `<tree-id>`, `<display-text>`, and `<is-page>`. A node with `<is-page>true</is-page>` can be used as `pid` for `entries::add_entry`.
 - ELN write smoke test confirmed on May 14, 2026: `entries::add_entry` with `part_type=plain text entry` and `entry_data=helloworld` returned HTTP 200 and an entry ID on a test notebook page.
+- `notebooks::notebook_backup` returns a `.7z` archive. With `json=true`, useful viewer inputs include `notebook.json`, `user.json`, `widgets.json`, and JSON tables under `notebook/`, especially `tree_nodes.json`, `entries.json`, `entry_parts.json`, and `comments.json`.
+- Backup rights are stricter than notebook visibility. On May 14, 2026, visible non-owned notebooks returned ELN error `4547` with "does not have rights to perform requested action"; the app treats these as skipped notebooks during "backup all owned/backup-allowed notebooks."
+- Dedicated integration notebook seeded on May 14, 2026 with headings, rich text, plain text, comments, folders/pages, and 15 bio-lab attachments covering CSV, TSV, FASTA, VCF, BED, GenBank, JSON, XML, Markdown, HTML, notebook, SVG, TXT, PDF, and PNG payloads.
 - Keep UID, organization ID, and lab ID discovery calls explicit:
   - ELN: `user_access_info` or `user_info_via_id`.
   - Scheduler: `GET /v1/me`.
