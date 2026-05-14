@@ -58,6 +58,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   final List<String> _log = <String>[];
   bool _busy = false;
   bool _setupBusy = false;
+  bool _restoreBusy = false;
 
   @override
   void initState() {
@@ -240,6 +241,55 @@ class _ElnlaHomeState extends State<ElnlaHome> {
           _busy = false;
           _rescheduleAutomaticBackup();
         });
+      }
+    }
+  }
+
+  Future<void> _downloadAttachment(RenderPart part) async {
+    final backup = _selectedBackup;
+    if (backup == null || _restoreBusy) {
+      return;
+    }
+    final selectedFolder = await _chooseDirectoryPath(
+      _backupRootPath.trim().isEmpty
+          ? _service.defaultBackupRootPath
+          : _backupRootPath,
+      prompt: 'Choose attachment download folder',
+    );
+    if (selectedFolder == null || selectedFolder.trim().isEmpty) {
+      return;
+    }
+    setState(() {
+      _restoreBusy = true;
+      _status = 'Restoring ${part.attachmentName ?? 'attachment'}...';
+    });
+    try {
+      final restored = await _service.restoreAttachment(
+        record: backup,
+        part: part,
+        destination: Directory(selectedFolder),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status = 'Attachment restored: ${restored.path}';
+        _log.insert(0, 'Restored ${part.attachmentName ?? restored.path}');
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved ${restored.uri.pathSegments.last}')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _status = 'Attachment restore failed: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Attachment restore failed: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _restoreBusy = false);
       }
     }
   }
@@ -429,7 +479,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
               _StatusStrip(
                 status: _status,
                 detail: _scheduleDetail,
-                busy: _busy || _setupBusy,
+                busy: _busy || _setupBusy || _restoreBusy,
               ),
               Expanded(
                 child: LayoutBuilder(
@@ -452,6 +502,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                         onSelectBackup: _selectBackup,
                         onSelectNode: (node) =>
                             setState(() => _selectedNode = node),
+                        onDownloadAttachment: _downloadAttachment,
                       );
                     }
                     return _WideLayout(
@@ -463,6 +514,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                       onSelectBackup: _selectBackup,
                       onSelectNode: (node) =>
                           setState(() => _selectedNode = node),
+                      onDownloadAttachment: _downloadAttachment,
                     );
                   },
                 ),
@@ -1005,6 +1057,7 @@ class _WideLayout extends StatelessWidget {
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
+    required this.onDownloadAttachment,
   });
 
   final List<BackupRecord> backups;
@@ -1014,6 +1067,7 @@ class _WideLayout extends StatelessWidget {
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
+  final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -1039,7 +1093,11 @@ class _WideLayout extends StatelessWidget {
         ),
         const VerticalDivider(width: 1),
         Expanded(
-          child: _EntryViewer(notebook: notebook, node: selectedNode),
+          child: _EntryViewer(
+            notebook: notebook,
+            node: selectedNode,
+            onDownloadAttachment: onDownloadAttachment,
+          ),
         ),
       ],
     );
@@ -1055,6 +1113,7 @@ class _NarrowLayout extends StatelessWidget {
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
+    required this.onDownloadAttachment,
   });
 
   final List<BackupRecord> backups;
@@ -1064,6 +1123,7 @@ class _NarrowLayout extends StatelessWidget {
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
+  final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -1092,7 +1152,11 @@ class _NarrowLayout extends StatelessWidget {
                   selectedNode: selectedNode,
                   onSelectNode: onSelectNode,
                 ),
-                _EntryViewer(notebook: notebook, node: selectedNode),
+                _EntryViewer(
+                  notebook: notebook,
+                  node: selectedNode,
+                  onDownloadAttachment: onDownloadAttachment,
+                ),
               ],
             ),
           ),
@@ -1278,10 +1342,15 @@ class _TreeNodeTile extends StatelessWidget {
 }
 
 class _EntryViewer extends StatelessWidget {
-  const _EntryViewer({required this.notebook, required this.node});
+  const _EntryViewer({
+    required this.notebook,
+    required this.node,
+    required this.onDownloadAttachment,
+  });
 
   final RenderNotebook? notebook;
   final RenderNode? node;
+  final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -1310,8 +1379,10 @@ class _EntryViewer extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   itemCount: selected.parts.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) =>
-                      _EntryPartView(part: selected.parts[index]),
+                  itemBuilder: (context, index) => _EntryPartView(
+                    part: selected.parts[index],
+                    onDownloadAttachment: onDownloadAttachment,
+                  ),
                 ),
         ),
       ],
@@ -1320,9 +1391,13 @@ class _EntryViewer extends StatelessWidget {
 }
 
 class _EntryPartView extends StatelessWidget {
-  const _EntryPartView({required this.part});
+  const _EntryPartView({
+    required this.part,
+    required this.onDownloadAttachment,
+  });
 
   final RenderPart part;
+  final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -1353,6 +1428,12 @@ class _EntryPartView extends StatelessWidget {
                     ],
                   ],
                 ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                tooltip: 'Download original attachment',
+                onPressed: () => onDownloadAttachment(part),
+                icon: const Icon(Icons.download_outlined),
               ),
             ],
           ),
@@ -1453,14 +1534,17 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-Future<String?> _chooseDirectoryPath(String initialDirectory) async {
+Future<String?> _chooseDirectoryPath(
+  String initialDirectory, {
+  String prompt = 'Choose backup folder',
+}) async {
   final initial = initialDirectory.trim();
   if (Platform.isMacOS) {
     final defaultClause = Directory(initial).existsSync()
         ? ' default location POSIX file "${_escapeAppleScript(initial)}"'
         : '';
     final script =
-        'set chosenFolder to choose folder with prompt "Choose backup folder"$defaultClause\n'
+        'set chosenFolder to choose folder with prompt "${_escapeAppleScript(prompt)}"$defaultClause\n'
         'POSIX path of chosenFolder';
     final result = await Process.run('osascript', ['-e', script]);
     if (result.exitCode == 0) {
@@ -1476,7 +1560,7 @@ Future<String?> _chooseDirectoryPath(String initialDirectory) async {
       outputEncoding,
       'Add-Type -AssemblyName System.Windows.Forms;',
       r'$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;',
-      r'$dialog.Description = "Choose backup folder";',
+      "\$dialog.Description = '${_escapePowerShellSingleQuoted(prompt)}';",
       r'$dialog.ShowNewFolderButton = $true;',
       "\$initial = '$initialPath';",
       r'if ([System.IO.Directory]::Exists($initial)) { $dialog.SelectedPath = $initial; }',

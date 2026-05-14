@@ -239,6 +239,7 @@ class RenderPart {
     this.attachmentName,
     this.attachmentContentType,
     this.attachmentSize,
+    this.attachmentOriginalPath,
   });
 
   final int id;
@@ -249,6 +250,7 @@ class RenderPart {
   final String? attachmentName;
   final String? attachmentContentType;
   final int? attachmentSize;
+  final String? attachmentOriginalPath;
 
   bool get isAttachment => attachmentName != null && attachmentName!.isNotEmpty;
 
@@ -274,6 +276,7 @@ class RenderPart {
     'attachmentName': attachmentName,
     'attachmentContentType': attachmentContentType,
     'attachmentSize': attachmentSize,
+    'attachmentOriginalPath': attachmentOriginalPath,
   };
 
   static RenderPart fromJson(Map<String, Object?> json) {
@@ -286,6 +289,7 @@ class RenderPart {
       attachmentName: json['attachmentName'] as String?,
       attachmentContentType: json['attachmentContentType'] as String?,
       attachmentSize: json['attachmentSize'] as int?,
+      attachmentOriginalPath: json['attachmentOriginalPath'] as String?,
     );
   }
 }

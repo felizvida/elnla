@@ -226,6 +226,36 @@ class BackupService {
     return RenderNotebook.fromJson(json);
   }
 
+  Future<File> restoreAttachment({
+    required BackupRecord record,
+    required RenderPart part,
+    required Directory destination,
+  }) async {
+    if (!part.isAttachment) {
+      throw StateError('Selected entry part is not an attachment.');
+    }
+    final source = await _resolveOriginalAttachment(record, part);
+    if (source == null || !await source.exists()) {
+      throw StateError(
+        'Original attachment file is not available in this local backup.',
+      );
+    }
+    await destination.create(recursive: true);
+    final fileName = _safeAttachmentFileName(
+      part.attachmentName ?? source.uri.pathSegments.last,
+    );
+    final output = await _uniqueDestinationFile(destination, fileName);
+    final restored = await source.copy(output.path);
+    final expectedSize = part.attachmentSize;
+    if (expectedSize != null && await restored.length() != expectedSize) {
+      await restored.delete();
+      throw StateError(
+        'Restored attachment size did not match the backup metadata.',
+      );
+    }
+    return restored;
+  }
+
   Future<List<BackupRecord>> backupAllNotebooks({
     ProgressCallback? onProgress,
   }) async {
@@ -272,6 +302,7 @@ class BackupService {
         final renderNotebook = await parser.parseExtractedBackup(
           extractedDir: extracted,
           archivePath: _relativeTo(backupRoot.path, archive.path),
+          backupRootPath: backupRoot.path,
         );
         onProgress?.call('Verifying full-size originals for ${notebook.name}');
         final originalsManifest = File(
@@ -517,6 +548,64 @@ class BackupService {
     return rootFile;
   }
 
+  Future<File?> _resolveOriginalAttachment(
+    BackupRecord record,
+    RenderPart part,
+  ) async {
+    final originalPath = part.attachmentOriginalPath;
+    if (originalPath != null && originalPath.trim().isNotEmpty) {
+      final file = await _resolveBackupFile(originalPath);
+      if (await file.exists()) {
+        return file;
+      }
+    }
+
+    final attachmentName = part.attachmentName;
+    if (attachmentName == null || attachmentName.trim().isEmpty) {
+      return null;
+    }
+    final renderFile = await _resolveBackupFile(record.renderPath);
+    final runDir = renderFile.parent;
+    final direct = File(
+      _join(
+        runDir.path,
+        'extracted',
+        'notebook',
+        'attachments',
+        part.id.toString(),
+        '1',
+        'original',
+        attachmentName,
+      ),
+    );
+    if (await direct.exists()) {
+      return direct;
+    }
+
+    final partRoot = Directory(
+      _join(
+        runDir.path,
+        'extracted',
+        'notebook',
+        'attachments',
+        part.id.toString(),
+      ),
+    );
+    if (!await partRoot.exists()) {
+      return null;
+    }
+    await for (final entity in partRoot.list(recursive: true)) {
+      if (entity is! File) {
+        continue;
+      }
+      final segments = entity.path.split(Platform.pathSeparator);
+      if (segments.contains('original') && segments.last == attachmentName) {
+        return entity;
+      }
+    }
+    return null;
+  }
+
   Future<void> _writeRunManifest({
     required Directory runDir,
     required String session,
@@ -681,6 +770,34 @@ class BackupService {
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_|_$'), '');
     return cleaned.isEmpty ? 'notebook' : cleaned;
+  }
+
+  String _safeAttachmentFileName(String value) {
+    final cleaned = value
+        .replaceAll(RegExp(r'[\\/\x00-\x1F]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .trim();
+    return cleaned.isEmpty ? 'attachment' : cleaned;
+  }
+
+  Future<File> _uniqueDestinationFile(
+    Directory destination,
+    String fileName,
+  ) async {
+    final dot = fileName.lastIndexOf('.');
+    final hasExtension = dot > 0 && dot < fileName.length - 1;
+    final stem = hasExtension ? fileName.substring(0, dot) : fileName;
+    final extension = hasExtension ? fileName.substring(dot) : '';
+    for (var index = 0; index < 10000; index++) {
+      final candidateName = index == 0
+          ? fileName
+          : '$stem (${index.toString()})$extension';
+      final candidate = File(_join(destination.path, candidateName));
+      if (!await candidate.exists()) {
+        return candidate;
+      }
+    }
+    throw StateError('Could not choose a unique restored attachment name.');
   }
 }
 

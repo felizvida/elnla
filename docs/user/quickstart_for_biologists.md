@@ -137,7 +137,9 @@ Use the viewer to:
 - Review page titles and entries.
 - Read text entries, rich text, and headings.
 - Check attachment names, types, and sizes.
-- Open the backup folder when you need the original saved files.
+- Click the download button on an attachment card to restore a copy of the
+  backed-up original file into a folder you choose.
+- Open the backup folder when you need to inspect the preservation archive.
 
 ## Good Lab Practice
 

@@ -1,7 +1,6 @@
 # LabArchives GOV API Working Reference
 
-Source PDF, local-only and ignored by Git:
-`local_docs/2026_05_14_notebook_70221.pdf`
+Source PDF: kept local-only in an ignored path and not committed to Git.
 
 Generated from: LabArchives GOV API Complete Notebook, generated May 14, 2026 at 03:30 PM EDT.
 
@@ -400,6 +399,7 @@ Append notes here as coding work reveals practical behavior.
 - `notebooks::notebook_backup` returns a `.7z` archive. With `json=true`, useful viewer inputs include `notebook.json`, `user.json`, `widgets.json`, and JSON tables under `notebook/`, especially `tree_nodes.json`, `entries.json`, `entry_parts.json`, and `comments.json`.
 - ELNLA backup storage convention: the user-selected backup folder contains `notebooks/<notebook>/<year>/<month>/<day>/<run>/` for archives, extracted JSON, render sidecars, and per-notebook records; `runs/<year>/<month>/<day>/` stores run manifests.
 - Full-size original-content rule: never pass `no_attachments=true` to `notebooks::notebook_backup`. For every attachment in `entry_parts.json`, verify `notebook/attachments/<entry-part-id>/<version>/original/<filename>` exists and matches `attach_file_size`; write `original_files_manifest.json` with relative paths, sizes, and SHA-256 hashes.
+- Viewer restore rule: render sidecars include each attachment original's backup-relative path when the original file is present. The read-only viewer restores attachments by copying that original payload to a user-selected folder without overwriting existing files; legacy render files fall back to `extracted/notebook/attachments/<entry-part-id>/.../original/<filename>`.
 - Backup rights are stricter than notebook visibility. On May 14, 2026, visible non-owned notebooks returned ELN error `4547` with "does not have rights to perform requested action"; the app treats these as skipped notebooks during "backup all owned/backup-allowed notebooks."
 - NIH/NICHD policy context: lab notebook owners are lab chiefs/PIs, and only the notebook owner can use the full-size LabArchives backup API for that notebook. Users who can view a notebook but are not the PI owner should expect backup API denial.
 - Dedicated integration notebook seeded on May 14, 2026 with headings, rich text, plain text, comments, folders/pages, and bio-lab attachments covering CSV, TSV, FASTA, VCF, BED, GenBank, JSON, XML, Markdown, HTML, notebook, SVG, TXT, PDF, and PNG payloads.

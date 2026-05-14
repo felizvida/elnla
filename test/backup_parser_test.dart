@@ -102,6 +102,10 @@ void main() {
     expect(page.title, 'qPCR plate');
     expect(page.isPage, isTrue);
     expect(page.parts[1].renderText, 'Cycle threshold & melt curve passed.');
+    expect(
+      page.parts[2].attachmentOriginalPath,
+      'notebook/attachments/3/1/original/raw_image.tif',
+    );
     expect(verification.isComplete, isTrue);
     expect(verification.expectedOriginalAttachmentCount, 1);
     expect(verification.verifiedOriginalAttachmentBytes, 4);

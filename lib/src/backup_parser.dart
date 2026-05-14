@@ -9,6 +9,7 @@ class BackupParser {
   Future<RenderNotebook> parseExtractedBackup({
     required Directory extractedDir,
     required String archivePath,
+    String? backupRootPath,
   }) async {
     final notebookInfo = await _readNotebookInfo(extractedDir);
     final treeNodes = await _readWrappedList(
@@ -38,7 +39,15 @@ class BackupParser {
       if (entryId == null) {
         continue;
       }
-      partsByEntryId.putIfAbsent(entryId, () => []).add(_renderPart(rawPart));
+      partsByEntryId
+          .putIfAbsent(entryId, () => [])
+          .add(
+            await _renderPart(
+              rawPart,
+              extractedDir: extractedDir,
+              backupRootPath: backupRootPath,
+            ),
+          );
     }
     for (final parts in partsByEntryId.values) {
       parts.sort((a, b) => a.position.compareTo(b.position));
@@ -259,9 +268,27 @@ class BackupParser {
     return rows;
   }
 
-  RenderPart _renderPart(Map<String, Object?> rawPart) {
+  Future<RenderPart> _renderPart(
+    Map<String, Object?> rawPart, {
+    required Directory extractedDir,
+    String? backupRootPath,
+  }) async {
     final code = _intValue(rawPart['part_type']) ?? -1;
     final attachmentName = _stringValue(rawPart['attach_file_name']);
+    String? originalPath;
+    if (attachmentName != null && attachmentName.trim().isNotEmpty) {
+      final original = await _findOriginalAttachment(
+        extractedDir: extractedDir,
+        partId: _intValue(rawPart['id']),
+        fileName: attachmentName,
+      );
+      if (original != null) {
+        originalPath = _relativeTo(
+          backupRootPath ?? extractedDir.path,
+          original.path,
+        );
+      }
+    }
     return RenderPart(
       id: _intValue(rawPart['id']) ?? 0,
       kindCode: code,
@@ -271,6 +298,7 @@ class BackupParser {
       attachmentName: attachmentName,
       attachmentContentType: _stringValue(rawPart['attach_content_type']),
       attachmentSize: _intValue(rawPart['attach_file_size']),
+      attachmentOriginalPath: originalPath,
     );
   }
 
