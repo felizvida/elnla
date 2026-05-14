@@ -63,12 +63,37 @@ void main() {
             'relative_position': 2.0,
           },
         },
+        {
+          'entry_part': {
+            'id': 3,
+            'entry_id': 22,
+            'part_type': 2,
+            'attach_file_name': 'raw_image.tif',
+            'attach_file_size': 4,
+            'entry_data': 'Raw microscopy image',
+            'relative_position': 3.0,
+          },
+        },
       ]),
     );
+    await Directory(
+      '${dir.path}/notebook/attachments/3/1/original',
+    ).create(recursive: true);
+    await File(
+      '${dir.path}/notebook/attachments/3/1/original/raw_image.tif',
+    ).writeAsBytes([1, 2, 3, 4]);
+    final archive = File('${dir.path}/notebook.7z');
+    await archive.writeAsBytes([9, 8, 7]);
 
     final notebook = await BackupParser().parseExtractedBackup(
       extractedDir: dir,
       archivePath: 'backups/example/notebook.7z',
+    );
+    final verification = await BackupParser().verifyOriginalContents(
+      extractedDir: dir,
+      archive: archive,
+      manifestFile: File('${dir.path}/original_files_manifest.json'),
+      manifestPath: 'backups/example/original_files_manifest.json',
     );
 
     expect(notebook.name, 'Parser Test Notebook');
@@ -76,6 +101,13 @@ void main() {
     final page = notebook.childrenOf(10).single;
     expect(page.title, 'qPCR plate');
     expect(page.isPage, isTrue);
-    expect(page.parts.last.renderText, 'Cycle threshold & melt curve passed.');
+    expect(page.parts[1].renderText, 'Cycle threshold & melt curve passed.');
+    expect(verification.isComplete, isTrue);
+    expect(verification.expectedOriginalAttachmentCount, 1);
+    expect(verification.verifiedOriginalAttachmentBytes, 4);
+    expect(
+      await File('${dir.path}/original_files_manifest.json').exists(),
+      isTrue,
+    );
   });
 }

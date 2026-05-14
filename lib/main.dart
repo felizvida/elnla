@@ -967,7 +967,7 @@ class _BackupList extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        '${backup.createdAtLabel} · ${backup.pageCount} pages',
+                        '${backup.createdAtLabel} · ${backup.pageCount} pages · ${backup.contentVerification?.summary ?? 'legacy archive'}',
                       ),
                       onTap: () => onSelect(backup),
                     );

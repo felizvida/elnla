@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'backup_models.dart';
 
 class BackupParser {
@@ -80,6 +82,140 @@ class BackupParser {
       archivePath: archivePath,
       nodes: nodes,
     );
+  }
+
+  Future<BackupContentVerification> verifyOriginalContents({
+    required Directory extractedDir,
+    required File archive,
+    required File manifestFile,
+    required String manifestPath,
+  }) async {
+    final entryParts = await _readWrappedList(
+      File(_join(extractedDir.path, 'notebook', 'entry_parts.json')),
+      'entry_part',
+    );
+
+    var expectedCount = 0;
+    var verifiedCount = 0;
+    var expectedBytes = 0;
+    var verifiedBytes = 0;
+    final missing = <String>[];
+    final mismatches = <String>[];
+    final files = <Map<String, Object?>>[];
+
+    for (final rawPart in entryParts) {
+      final fileName = _stringValue(rawPart['attach_file_name']);
+      if (fileName == null || fileName.trim().isEmpty) {
+        continue;
+      }
+      expectedCount += 1;
+      final partId = _intValue(rawPart['id']);
+      final expectedSize = _intValue(rawPart['attach_file_size']) ?? 0;
+      expectedBytes += expectedSize;
+      final original = await _findOriginalAttachment(
+        extractedDir: extractedDir,
+        partId: partId,
+        fileName: fileName,
+      );
+      if (original == null) {
+        missing.add('${partId ?? 'unknown'}:$fileName');
+        continue;
+      }
+      final actualSize = await original.length();
+      final relativePath = _relativeTo(extractedDir.path, original.path);
+      final digest = await sha256.bind(original.openRead()).first;
+      files.add({
+        'entryPartId': partId,
+        'fileName': fileName,
+        'relativePath': relativePath,
+        'expectedBytes': expectedSize,
+        'actualBytes': actualSize,
+        'sha256': digest.toString(),
+      });
+      if (actualSize != expectedSize) {
+        mismatches.add(
+          '${partId ?? 'unknown'}:$fileName expected $expectedSize bytes, got $actualSize bytes',
+        );
+        continue;
+      }
+      verifiedCount += 1;
+      verifiedBytes += actualSize;
+    }
+
+    await manifestFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'manifestVersion': 1,
+        'policy': 'full_original_attachment_payloads',
+        'sourceArchive': archive.uri.pathSegments.isEmpty
+            ? archive.path
+            : archive.uri.pathSegments.last,
+        'archiveBytes': await archive.length(),
+        'expectedOriginalAttachmentCount': expectedCount,
+        'verifiedOriginalAttachmentCount': verifiedCount,
+        'expectedOriginalAttachmentBytes': expectedBytes,
+        'verifiedOriginalAttachmentBytes': verifiedBytes,
+        'files': files,
+        'missingOriginals': missing,
+        'sizeMismatches': mismatches,
+      }),
+    );
+
+    return BackupContentVerification(
+      archiveBytes: await archive.length(),
+      expectedOriginalAttachmentCount: expectedCount,
+      verifiedOriginalAttachmentCount: verifiedCount,
+      expectedOriginalAttachmentBytes: expectedBytes,
+      verifiedOriginalAttachmentBytes: verifiedBytes,
+      manifestPath: manifestPath,
+      missingOriginals: missing,
+      sizeMismatches: mismatches,
+    );
+  }
+
+  Future<File?> _findOriginalAttachment({
+    required Directory extractedDir,
+    required int? partId,
+    required String fileName,
+  }) async {
+    final attachmentsDir = Directory(
+      _join(extractedDir.path, 'notebook', 'attachments'),
+    );
+    if (!await attachmentsDir.exists()) {
+      return null;
+    }
+    if (partId != null) {
+      final direct = File(
+        _join(
+          attachmentsDir.path,
+          partId.toString(),
+          '1',
+          'original',
+          fileName,
+        ),
+      );
+      if (await direct.exists()) {
+        return direct;
+      }
+    }
+
+    final partRoot = partId == null
+        ? attachmentsDir
+        : Directory(_join(attachmentsDir.path, partId.toString()));
+    if (!await partRoot.exists()) {
+      return null;
+    }
+    await for (final entity in partRoot.list(recursive: true)) {
+      if (entity is! File) {
+        continue;
+      }
+      final normalized = entity.path.split(Platform.pathSeparator);
+      if (normalized.contains('original') &&
+          normalized.isNotEmpty &&
+          normalized.last == fileName) {
+        return entity;
+      }
+    }
+    return null;
   }
 
   Future<_NotebookInfo> _readNotebookInfo(Directory extractedDir) async {
@@ -224,14 +360,32 @@ class BackupParser {
   }
 }
 
-String _join(String first, [String? second, String? third, String? fourth]) {
+String _join(
+  String first, [
+  String? second,
+  String? third,
+  String? fourth,
+  String? fifth,
+]) {
   final parts = <String>[first];
-  for (final part in [second, third, fourth]) {
+  for (final part in [second, third, fourth, fifth]) {
     if (part != null && part.isNotEmpty) {
       parts.add(part);
     }
   }
   return parts.join(Platform.pathSeparator);
+}
+
+String _relativeTo(String base, String path) {
+  final normalizedBase = Directory(base).absolute.path;
+  final normalizedPath = File(path).absolute.path;
+  if (normalizedPath.startsWith(normalizedBase)) {
+    final relative = normalizedPath.substring(normalizedBase.length);
+    return relative.startsWith(Platform.pathSeparator)
+        ? relative.substring(1)
+        : relative;
+  }
+  return path;
 }
 
 class _NotebookInfo {

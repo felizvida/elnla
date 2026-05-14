@@ -20,6 +20,7 @@ class BackupRecord {
     required this.archivePath,
     required this.renderPath,
     required this.pageCount,
+    this.contentVerification,
   });
 
   final String id;
@@ -28,6 +29,7 @@ class BackupRecord {
   final String archivePath;
   final String renderPath;
   final int pageCount;
+  final BackupContentVerification? contentVerification;
 
   String get createdAtLabel {
     final local = createdAt.toLocal();
@@ -42,6 +44,7 @@ class BackupRecord {
     'archivePath': archivePath,
     'renderPath': renderPath,
     'pageCount': pageCount,
+    'contentVerification': contentVerification?.toJson(),
   };
 
   static BackupRecord fromJson(Map<String, Object?> json) {
@@ -52,6 +55,78 @@ class BackupRecord {
       archivePath: json['archivePath'] as String,
       renderPath: json['renderPath'] as String,
       pageCount: json['pageCount'] as int,
+      contentVerification: json['contentVerification'] is Map<String, Object?>
+          ? BackupContentVerification.fromJson(
+              json['contentVerification'] as Map<String, Object?>,
+            )
+          : null,
+    );
+  }
+}
+
+class BackupContentVerification {
+  const BackupContentVerification({
+    required this.archiveBytes,
+    required this.expectedOriginalAttachmentCount,
+    required this.verifiedOriginalAttachmentCount,
+    required this.expectedOriginalAttachmentBytes,
+    required this.verifiedOriginalAttachmentBytes,
+    required this.manifestPath,
+    required this.missingOriginals,
+    required this.sizeMismatches,
+  });
+
+  final int archiveBytes;
+  final int expectedOriginalAttachmentCount;
+  final int verifiedOriginalAttachmentCount;
+  final int expectedOriginalAttachmentBytes;
+  final int verifiedOriginalAttachmentBytes;
+  final String manifestPath;
+  final List<String> missingOriginals;
+  final List<String> sizeMismatches;
+
+  bool get isComplete =>
+      missingOriginals.isEmpty &&
+      sizeMismatches.isEmpty &&
+      verifiedOriginalAttachmentCount == expectedOriginalAttachmentCount &&
+      verifiedOriginalAttachmentBytes == expectedOriginalAttachmentBytes;
+
+  String get summary {
+    if (expectedOriginalAttachmentCount == 0) {
+      return 'no attachments';
+    }
+    return '$verifiedOriginalAttachmentCount/$expectedOriginalAttachmentCount originals, $verifiedOriginalAttachmentBytes bytes';
+  }
+
+  Map<String, Object?> toJson() => {
+    'archiveBytes': archiveBytes,
+    'expectedOriginalAttachmentCount': expectedOriginalAttachmentCount,
+    'verifiedOriginalAttachmentCount': verifiedOriginalAttachmentCount,
+    'expectedOriginalAttachmentBytes': expectedOriginalAttachmentBytes,
+    'verifiedOriginalAttachmentBytes': verifiedOriginalAttachmentBytes,
+    'manifestPath': manifestPath,
+    'missingOriginals': missingOriginals,
+    'sizeMismatches': sizeMismatches,
+  };
+
+  static BackupContentVerification fromJson(Map<String, Object?> json) {
+    return BackupContentVerification(
+      archiveBytes: json['archiveBytes'] as int? ?? 0,
+      expectedOriginalAttachmentCount:
+          json['expectedOriginalAttachmentCount'] as int? ?? 0,
+      verifiedOriginalAttachmentCount:
+          json['verifiedOriginalAttachmentCount'] as int? ?? 0,
+      expectedOriginalAttachmentBytes:
+          json['expectedOriginalAttachmentBytes'] as int? ?? 0,
+      verifiedOriginalAttachmentBytes:
+          json['verifiedOriginalAttachmentBytes'] as int? ?? 0,
+      manifestPath: json['manifestPath'] as String? ?? '',
+      missingOriginals: (json['missingOriginals'] as List<Object?>? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
+      sizeMismatches: (json['sizeMismatches'] as List<Object?>? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
     );
   }
 }

@@ -273,6 +273,21 @@ class BackupService {
           extractedDir: extracted,
           archivePath: _relativeTo(backupRoot.path, archive.path),
         );
+        onProgress?.call('Verifying full-size originals for ${notebook.name}');
+        final originalsManifest = File(
+          _join(notebookDir.path, 'original_files_manifest.json'),
+        );
+        final contentVerification = await parser.verifyOriginalContents(
+          extractedDir: extracted,
+          archive: archive,
+          manifestFile: originalsManifest,
+          manifestPath: _relativeTo(backupRoot.path, originalsManifest.path),
+        );
+        if (!contentVerification.isComplete) {
+          throw StateError(
+            'Original attachment verification failed for ${notebook.name}.',
+          );
+        }
         final renderFile = File(
           _join(notebookDir.path, 'render_notebook.json'),
         );
@@ -287,6 +302,7 @@ class BackupService {
           archivePath: _relativeTo(backupRoot.path, archive.path),
           renderPath: _relativeTo(backupRoot.path, renderFile.path),
           pageCount: renderNotebook.nodes.where((node) => node.isPage).length,
+          contentVerification: contentVerification,
         );
         final recordFile = File(_join(notebookDir.path, 'backup_record.json'));
         await recordFile.writeAsString(

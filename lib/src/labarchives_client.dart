@@ -27,6 +27,8 @@ class LabArchivesClient {
     if (userId == null || userId.isEmpty) {
       throw const LabArchivesException('Missing LabArchives UID.');
     }
+    // Do not send no_attachments=true: the archive is the preservation copy and
+    // must include full-size original attachment payloads.
     final uri = _elnUri(
       apiClass: 'notebooks',
       method: 'notebook_backup',
