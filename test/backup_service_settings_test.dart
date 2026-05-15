@@ -89,6 +89,61 @@ void main() {
     },
   );
 
+  test('loadAttachmentTextPreview reads safe bounded text only', () async {
+    final root = await Directory.systemTemp.createTemp('elnla_preview_test_');
+    addTearDown(() => root.delete(recursive: true));
+
+    final service = BackupService(root: root);
+    final originalDir = Directory(
+      '${root.path}/backups/notebooks/demo/2026/05/14/run_004/extracted/notebook/attachments/4/1/original',
+    );
+    await originalDir.create(recursive: true);
+    await File(
+      '${originalDir.path}/amplicon.fasta',
+    ).writeAsString('>amplicon\nACGTACGTACGT\n');
+    await File('${originalDir.path}/trace.ab1').writeAsBytes([65, 0, 66]);
+    final record = BackupRecord(
+      id: 'run_004_demo',
+      notebookName: 'Demo',
+      createdAt: DateTime.utc(2026, 5, 14),
+      archivePath: 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+      renderPath: 'notebooks/demo/2026/05/14/run_004/render_notebook.json',
+      pageCount: 1,
+    );
+
+    final preview = await service.loadAttachmentTextPreview(
+      record: record,
+      part: const RenderPart(
+        id: 4,
+        kindCode: 2,
+        kindLabel: 'Attachment',
+        renderText: '',
+        position: 1,
+        attachmentName: 'amplicon.fasta',
+        attachmentOriginalPath:
+            'notebooks/demo/2026/05/14/run_004/extracted/notebook/attachments/4/1/original/amplicon.fasta',
+      ),
+      maxBytes: 12,
+    );
+    expect(preview, startsWith('>amplicon'));
+    expect(preview, contains('[Preview truncated]'));
+
+    final binaryPreview = await service.loadAttachmentTextPreview(
+      record: record,
+      part: const RenderPart(
+        id: 4,
+        kindCode: 2,
+        kindLabel: 'Attachment',
+        renderText: '',
+        position: 1,
+        attachmentName: 'trace.ab1',
+        attachmentOriginalPath:
+            'notebooks/demo/2026/05/14/run_004/extracted/notebook/attachments/4/1/original/trace.ab1',
+      ),
+    );
+    expect(binaryPreview, isNull);
+  });
+
   test('OpenAI search settings stay in local credentials', () async {
     final root = await Directory.systemTemp.createTemp('elnla_openai_test_');
     addTearDown(() => root.delete(recursive: true));

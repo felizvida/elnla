@@ -96,6 +96,31 @@ the viewer re-checks protected files. If a file was changed, removed, or added,
 ELNLA shows a warning before you rely on that copy. This is tamper-evidence for
 local preservation; it is not a legal certification by itself.
 
+## Supported Attachments
+
+LabArchives can attach documents of any file type and format. ELNLA therefore
+preserves and restores every original payload it finds in a full-size backup,
+even when no inline preview is available.
+
+The read-only viewer recognizes the same major LabArchives attachment families:
+
+- Common browser images such as PNG, JPG, JPEG, GIF, WebP, and BMP.
+- Text, tabular, structured, and sequence files such as TXT, CSV, TSV,
+  Markdown, JSON, XML, FASTA, GenBank, EMBL, BED, VCF, GFF, and GTF.
+- PDFs and Microsoft Office documents.
+- Jupyter notebooks.
+- SnapGene, Geneious, Sanger trace, and related molecular biology files.
+- Chemical structure files such as CDX, CDXML, MOL, SDF, and SKC.
+- Media files, archives, and other custom instrument exports.
+
+ELNLA previews safe local formats inline, including common images, text-like
+files, sequence text, chemical text files, and a Jupyter notebook summary.
+Tool-specific formats such as Office files, PDFs, TIFF images, SnapGene files,
+binary chemical drawings, media, and custom instrument exports are still
+preserved, sealed, and restorable from the attachment card for inspection in the
+appropriate local application. HTML and SVG attachments are shown as source text;
+the viewer does not run embedded scripts.
+
 ## Search Backed-Up Notebooks
 
 ![Natural-language notebook search](../assets/screenshots/elnla-ai-search.png){width=80%}

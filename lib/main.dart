@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'src/backup_models.dart';
 import 'src/backup_service.dart';
+import 'src/attachment_format_support.dart';
 import 'src/notebook_search_service.dart';
 import 'src/search_models.dart';
 import 'src/setup_models.dart';
@@ -791,6 +793,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                     }
                     if (constraints.maxWidth < 840) {
                       return _NarrowLayout(
+                        service: _service,
                         backups: _backups,
                         selectedBackup: _selectedBackup,
                         notebook: _selectedNotebook,
@@ -803,6 +806,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                       );
                     }
                     return _WideLayout(
+                      service: _service,
                       backups: _backups,
                       selectedBackup: _selectedBackup,
                       notebook: _selectedNotebook,
@@ -1785,6 +1789,7 @@ class _SearchPanel extends StatelessWidget {
 
 class _WideLayout extends StatelessWidget {
   const _WideLayout({
+    required this.service,
     required this.backups,
     required this.selectedBackup,
     required this.notebook,
@@ -1795,6 +1800,7 @@ class _WideLayout extends StatelessWidget {
     required this.onDownloadAttachment,
   });
 
+  final BackupService service;
   final List<BackupRecord> backups;
   final BackupRecord? selectedBackup;
   final RenderNotebook? notebook;
@@ -1829,6 +1835,8 @@ class _WideLayout extends StatelessWidget {
         const VerticalDivider(width: 1),
         Expanded(
           child: _EntryViewer(
+            service: service,
+            backup: selectedBackup,
             notebook: notebook,
             node: selectedNode,
             onDownloadAttachment: onDownloadAttachment,
@@ -1841,6 +1849,7 @@ class _WideLayout extends StatelessWidget {
 
 class _NarrowLayout extends StatelessWidget {
   const _NarrowLayout({
+    required this.service,
     required this.backups,
     required this.selectedBackup,
     required this.notebook,
@@ -1851,6 +1860,7 @@ class _NarrowLayout extends StatelessWidget {
     required this.onDownloadAttachment,
   });
 
+  final BackupService service;
   final List<BackupRecord> backups;
   final BackupRecord? selectedBackup;
   final RenderNotebook? notebook;
@@ -1888,6 +1898,8 @@ class _NarrowLayout extends StatelessWidget {
                   onSelectNode: onSelectNode,
                 ),
                 _EntryViewer(
+                  service: service,
+                  backup: selectedBackup,
                   notebook: notebook,
                   node: selectedNode,
                   onDownloadAttachment: onDownloadAttachment,
@@ -2078,11 +2090,15 @@ class _TreeNodeTile extends StatelessWidget {
 
 class _EntryViewer extends StatelessWidget {
   const _EntryViewer({
+    required this.service,
+    required this.backup,
     required this.notebook,
     required this.node,
     required this.onDownloadAttachment,
   });
 
+  final BackupService service;
+  final BackupRecord? backup;
   final RenderNotebook? notebook;
   final RenderNode? node;
   final ValueChanged<RenderPart> onDownloadAttachment;
@@ -2115,6 +2131,8 @@ class _EntryViewer extends StatelessWidget {
                   itemCount: selected.parts.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (context, index) => _EntryPartView(
+                    service: service,
+                    backup: backup,
                     part: selected.parts[index],
                     onDownloadAttachment: onDownloadAttachment,
                   ),
@@ -2127,10 +2145,14 @@ class _EntryViewer extends StatelessWidget {
 
 class _EntryPartView extends StatelessWidget {
   const _EntryPartView({
+    required this.service,
+    required this.backup,
     required this.part,
     required this.onDownloadAttachment,
   });
 
+  final BackupService service;
+  final BackupRecord? backup;
   final RenderPart part;
   final ValueChanged<RenderPart> onDownloadAttachment;
 
@@ -2138,42 +2160,59 @@ class _EntryPartView extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     if (part.isAttachment) {
+      final support = attachmentFormatSupport(part);
       return DecoratedBox(
         decoration: _partDecoration(context),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.attach_file, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      part.attachmentName ?? 'Attachment',
-                      style: textTheme.titleSmall,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_attachmentIcon(support), size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          part.attachmentName ?? 'Attachment',
+                          style: textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          part.attachmentSummary,
+                          style: textTheme.bodySmall,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(part.attachmentSummary, style: textTheme.bodySmall),
-                    if (part.renderText.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SelectableText(part.renderText),
-                    ],
-                    if (part.comments.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      _CommentList(comments: part.comments),
-                    ],
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton.filledTonal(
+                    tooltip: 'Download original attachment',
+                    onPressed: () => onDownloadAttachment(part),
+                    icon: const Icon(Icons.download_outlined),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              IconButton.filledTonal(
-                tooltip: 'Download original attachment',
-                onPressed: () => onDownloadAttachment(part),
-                icon: const Icon(Icons.download_outlined),
+              const SizedBox(height: 10),
+              _AttachmentSupportBadge(support: support),
+              if (part.renderText.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SelectableText(part.renderText),
+              ],
+              _AttachmentPreview(
+                service: service,
+                backup: backup,
+                part: part,
+                support: support,
               ),
+              if (part.comments.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _CommentList(comments: part.comments),
+              ],
             ],
           ),
         ),
@@ -2210,12 +2249,362 @@ class _EntryPartView extends StatelessWidget {
     );
   }
 
+  IconData _attachmentIcon(AttachmentFormatSupport support) {
+    return switch (support.previewMode) {
+      AttachmentPreviewMode.inlineImage => Icons.image_outlined,
+      AttachmentPreviewMode.inlineText => Icons.description_outlined,
+      AttachmentPreviewMode.jupyterSummary => Icons.data_object_outlined,
+      AttachmentPreviewMode.externalViewer => Icons.open_in_new_outlined,
+      AttachmentPreviewMode.downloadOnly => Icons.attach_file,
+    };
+  }
+
   BoxDecoration _partDecoration(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return BoxDecoration(
       border: Border.all(color: colors.outlineVariant),
       borderRadius: BorderRadius.circular(8),
       color: colors.surface,
+    );
+  }
+}
+
+class _AttachmentSupportBadge extends StatelessWidget {
+  const _AttachmentSupportBadge({required this.support});
+
+  final AttachmentFormatSupport support;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: support.hasInlinePreview
+            ? colors.primaryContainer.withValues(alpha: 0.42)
+            : colors.secondaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              support.family,
+              style: textTheme.labelMedium?.copyWith(
+                color: colors.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              support.elnlaSupport,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onPrimaryContainer,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachmentPreview extends StatelessWidget {
+  const _AttachmentPreview({
+    required this.service,
+    required this.backup,
+    required this.part,
+    required this.support,
+  });
+
+  final BackupService service;
+  final BackupRecord? backup;
+  final RenderPart part;
+  final AttachmentFormatSupport support;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!support.hasInlinePreview) {
+      return _AttachmentPreviewHint(support: support);
+    }
+    final record = backup;
+    if (record == null) {
+      return const _AttachmentPreviewMessage(
+        message: 'Select a backup record to preview the original payload.',
+      );
+    }
+    return FutureBuilder<File?>(
+      future: service.resolveOriginalAttachmentFile(record: record, part: part),
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: LinearProgressIndicator(),
+          );
+        }
+        if (file == null || !file.existsSync()) {
+          return const _AttachmentPreviewMessage(
+            message:
+                'Original payload is not available for inline preview in this local backup.',
+          );
+        }
+        return switch (support.previewMode) {
+          AttachmentPreviewMode.inlineImage => _InlineImagePreview(file: file),
+          AttachmentPreviewMode.inlineText => _InlineTextPreview(
+            service: service,
+            record: record,
+            part: part,
+          ),
+          AttachmentPreviewMode.jupyterSummary => _InlineJupyterPreview(
+            service: service,
+            record: record,
+            part: part,
+          ),
+          _ => _AttachmentPreviewHint(support: support),
+        };
+      },
+    );
+  }
+}
+
+class _InlineImagePreview extends StatelessWidget {
+  const _InlineImagePreview({required this.file});
+
+  final File file;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      constraints: const BoxConstraints(maxHeight: 260),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(6),
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.32),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.file(
+        file,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) =>
+            const _AttachmentPreviewMessage(
+              message: 'This image format could not be previewed inline.',
+            ),
+      ),
+    );
+  }
+}
+
+class _InlineTextPreview extends StatelessWidget {
+  const _InlineTextPreview({
+    required this.service,
+    required this.record,
+    required this.part,
+  });
+
+  final BackupService service;
+  final BackupRecord record;
+  final RenderPart part;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: service.loadAttachmentTextPreview(record: record, part: part),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: LinearProgressIndicator(),
+          );
+        }
+        final text = snapshot.data?.trim();
+        if (text == null || text.isEmpty) {
+          return const _AttachmentPreviewMessage(
+            message: 'No safe text preview is available for this attachment.',
+          );
+        }
+        return _AttachmentTextBox(text: text);
+      },
+    );
+  }
+}
+
+class _InlineJupyterPreview extends StatelessWidget {
+  const _InlineJupyterPreview({
+    required this.service,
+    required this.record,
+    required this.part,
+  });
+
+  final BackupService service;
+  final BackupRecord record;
+  final RenderPart part;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: service.loadAttachmentTextPreview(record: record, part: part),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: LinearProgressIndicator(),
+          );
+        }
+        final summary = _jupyterSummary(snapshot.data);
+        return _AttachmentTextBox(text: summary);
+      },
+    );
+  }
+
+  String _jupyterSummary(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return 'Jupyter notebook payload is empty or unavailable.';
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      return 'Jupyter notebook payload could not be parsed locally. Restore the original .ipynb for inspection.';
+    }
+    if (decoded is! Map<String, Object?>) {
+      return 'Jupyter notebook payload is not a recognized notebook object.';
+    }
+    final cells = (decoded['cells'] as List<Object?>? ?? const []);
+    var markdownCells = 0;
+    var codeCells = 0;
+    String? title;
+    for (final cell in cells.whereType<Map<String, Object?>>()) {
+      final sourceText = _cellSourceText(cell['source']);
+      final cellType = cell['cell_type'];
+      if (cellType == 'markdown') {
+        markdownCells += 1;
+        title ??= _firstMarkdownHeading(sourceText);
+      } else if (cellType == 'code') {
+        codeCells += 1;
+      }
+    }
+    final language = _notebookLanguage(decoded);
+    final pieces = [
+      'Jupyter notebook summary',
+      'Language: $language',
+      'Markdown cells: $markdownCells',
+      'Code cells: $codeCells',
+      if (title != null && title.isNotEmpty) 'First heading: $title',
+    ];
+    return pieces.join('\n');
+  }
+
+  String _cellSourceText(Object? source) {
+    if (source is String) {
+      return source;
+    }
+    if (source is List<Object?>) {
+      return source.map((line) => line?.toString() ?? '').join();
+    }
+    return '';
+  }
+
+  String? _firstMarkdownHeading(String sourceText) {
+    for (final line in const LineSplitter().convert(sourceText)) {
+      final trimmed = line.trimLeft();
+      if (trimmed.startsWith('#')) {
+        final title = trimmed.replaceFirst(RegExp(r'^#+\s*'), '').trim();
+        if (title.isNotEmpty) {
+          return title;
+        }
+      }
+    }
+    return null;
+  }
+
+  String _notebookLanguage(Map<String, Object?> notebook) {
+    final metadata = notebook['metadata'];
+    if (metadata is Map<String, Object?>) {
+      final languageInfo = metadata['language_info'];
+      if (languageInfo is Map<String, Object?>) {
+        final name = languageInfo['name'];
+        if (name is String && name.trim().isNotEmpty) {
+          return name;
+        }
+      }
+      final kernelSpec = metadata['kernelspec'];
+      if (kernelSpec is Map<String, Object?>) {
+        final language = kernelSpec['language'];
+        if (language is String && language.trim().isNotEmpty) {
+          return language;
+        }
+      }
+    }
+    return 'unknown';
+  }
+}
+
+class _AttachmentTextBox extends StatelessWidget {
+  const _AttachmentTextBox({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      constraints: const BoxConstraints(maxHeight: 260),
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(6),
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.32),
+      ),
+      child: SingleChildScrollView(
+        child: SelectableText(
+          text,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachmentPreviewHint extends StatelessWidget {
+  const _AttachmentPreviewHint({required this.support});
+
+  final AttachmentFormatSupport support;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = support.labArchivesDirectView
+        ? '${support.labArchivesSupport} ${support.elnlaSupport}'
+        : support.elnlaSupport;
+    return _AttachmentPreviewMessage(message: message);
+  }
+}
+
+class _AttachmentPreviewMessage extends StatelessWidget {
+  const _AttachmentPreviewMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(message, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }

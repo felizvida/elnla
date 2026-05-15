@@ -34,6 +34,10 @@ in the app and in the documentation so backup failures are easier to understand.
   successful backup.
 - Provides notebook search with local fuzzy fallback and OpenAI-powered
   natural-language answers when the user saves an OpenAI API key locally.
+- Recognizes LabArchives attachment families in the viewer, including browser
+  images, text/tabular files, PDFs, Office documents, Jupyter notebooks,
+  SnapGene/sequence files, chemical structure files, media, archives, and
+  unknown custom formats.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
 - Seals each successful backup with a SHA-256 integrity manifest and warns in

@@ -506,6 +506,35 @@ class BackupService {
     return restored;
   }
 
+  Future<File?> resolveOriginalAttachmentFile({
+    required BackupRecord record,
+    required RenderPart part,
+  }) {
+    return _resolveOriginalAttachment(record, part);
+  }
+
+  Future<String?> loadAttachmentTextPreview({
+    required BackupRecord record,
+    required RenderPart part,
+    int maxBytes = 65536,
+  }) async {
+    final source = await _resolveOriginalAttachment(record, part);
+    if (source == null || !await source.exists()) {
+      return null;
+    }
+    final length = await source.length();
+    final previewEnd = length < maxBytes ? length : maxBytes;
+    final bytes = <int>[];
+    await for (final chunk in source.openRead(0, previewEnd)) {
+      bytes.addAll(chunk);
+    }
+    if (bytes.contains(0)) {
+      return null;
+    }
+    final decoded = utf8.decode(bytes, allowMalformed: true);
+    return length > maxBytes ? '$decoded\n\n[Preview truncated]' : decoded;
+  }
+
   Future<List<BackupRecord>> backupAllNotebooks({
     ProgressCallback? onProgress,
   }) async {

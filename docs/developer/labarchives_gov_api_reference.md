@@ -401,6 +401,24 @@ Keep this section practical. These are implementation notes that prevent future 
 - After restore, compare the copied file size to the backup metadata and delete the restored copy if the size does not match. This catches interrupted copies and path-resolution mistakes.
 - Filename edge case observed on May 14, 2026: LabArchives accepted no-extension uploads, but the full notebook backup omitted their `original/` payloads. Keep test fixtures extension-bearing unless deliberately testing that failure mode.
 
+### Attachment Format Support
+
+Current LabArchives help says notebook attachments can be any file type and format, but only some families have direct LabArchives viewers or editors. Sources checked online on May 14, 2026:
+
+- [Attachments](https://help.labarchives.com/hc/en-us/articles/11731752815508-Attachments): arbitrary attachments; direct view for text files, PDFs, Microsoft Office documents, and common images such as PNG, JPG, and GIF; Office view/edit depends on Microsoft Office for the Web and size limits.
+- [Image Annotator](https://help.labarchives.com/hc/en-us/articles/11731813005076-Image-Annotator): annotates browser-supported image formats such as JPG, PNG, and GIF; TIFF is specifically not browser-native.
+- [Jupyter Integration](https://help.labarchives.com/hc/en-us/articles/11780569021972-Jupyter-Integration): `.ipynb` files render in the LabArchives Docs Viewer.
+- [SnapGene Integration](https://help.labarchives.com/hc/en-us/articles/11780512729492-SnapGene-Integration): sequence/project formats include `.dna`, `.seq`, `.xdna`, `.clc`, `.pdw`, `.cx5`, `.cm5`, `.nucl`, `.gcproj`, `.cow`, `.embl`, `.gcc`, `.fasta`, `.fa`, `.gb`, `.gbk`, `.sbd`, and `.geneious`.
+- [Inventory item attachments](https://help.labarchives.com/hc/en-us/articles/11809875199252-Adding-an-Inventory-Item): inventory attachment examples include PDFs, text/images, chemical formats `.cdx`, `.cdxml`, `.mol`, `.sdf`, `.skc`, and DNA sequence formats including `.ab1`.
+
+Viewer implementation rules:
+
+- Preserve and restore every original payload regardless of extension. LabArchives' broad "any file type" rule means unknown instrument formats must be first-class preservation objects, not errors.
+- Inline-preview only formats that Flutter can render safely without executing active content: common raster images, text/tabular/structured files, sequence text, text-based chemical files, and Jupyter summaries parsed from the `.ipynb` JSON.
+- Treat HTML and SVG attachments as source text in the read-only viewer. Do not run scripts, remote resources, or embedded active content from a backup.
+- Recognize PDF, Office, TIFF, SnapGene/Geneious/Sanger trace, binary chemical drawings, media, archives, and unknown formats with clear metadata and restore affordances. These remain sealed originals and should be opened in an appropriate local tool if visual inspection is needed.
+- Keep format classification in `lib/src/attachment_format_support.dart` so future renderer improvements do not spread extension rules across UI code.
+
 ### Backup And Viewer Data Flow
 
 - Backup flow: download `notebook.7z`, extract to `extracted/`, parse JSON tables into `render_notebook.json`, verify originals into `original_files_manifest.json`, write readable/search sidecars, then seal integrity.
@@ -451,6 +469,7 @@ Append notes here as coding work reveals practical behavior.
 - OpenAI search credential convention: store `OPENAI_API_KEY` and optional `OPENAI_MODEL` only in ignored `local_credentials/openai.env`. The app defaults the model to `gpt-5.5` and sends only the locally selected notebook excerpts needed for a natural-language answer.
 - Full-size original-content rule: never pass `no_attachments=true` to `notebooks::notebook_backup`. For every attachment in `entry_parts.json`, verify `notebook/attachments/<entry-part-id>/<version>/original/<filename>` exists and matches `attach_file_size`; write `original_files_manifest.json` with relative paths, sizes, and SHA-256 hashes.
 - Viewer restore rule: render sidecars include each attachment original's backup-relative path when the original file is present. The read-only viewer restores attachments by copying that original payload to a user-selected folder without overwriting existing files; legacy render files fall back to `extracted/notebook/attachments/<entry-part-id>/.../original/<filename>`.
+- Viewer attachment format rule: LabArchives allows arbitrary notebook attachments, with direct/cloud viewers for text, PDF, Office, common browser images, Jupyter `.ipynb`, and SnapGene/sequence families. ELNLA should preserve every original payload, inline-preview safe local formats, treat HTML/SVG as source text, and classify Office/PDF/SnapGene/TIFF/chemical/media/archive/custom files with restore-first affordances until dedicated renderers are added.
 - Viewer comment/link rule: parse `comments.json` by `entry_part_id` and render comments beneath their entry part. Convert HTML anchors to readable `label (URL)` text before stripping remaining HTML so link targets are not silently lost in the read-only view.
 - Backup rights are stricter than notebook visibility. On May 14, 2026, visible non-owned notebooks returned ELN error `4547` with "does not have rights to perform requested action"; the app treats these as skipped notebooks during "backup all owned/backup-allowed notebooks."
 - NIH/NICHD policy context: lab notebook owners are lab chiefs/PIs, and only the notebook owner can use the full-size LabArchives backup API for that notebook. Users who can view a notebook but are not the PI owner should expect backup API denial.
