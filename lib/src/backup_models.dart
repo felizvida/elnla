@@ -103,6 +103,221 @@ class BackupRecord {
   }
 }
 
+enum BackupOutcomeStatus {
+  success,
+  skipped;
+
+  String get label {
+    return switch (this) {
+      BackupOutcomeStatus.success => 'Backed up',
+      BackupOutcomeStatus.skipped => 'Skipped',
+    };
+  }
+}
+
+enum BackupFailureCategory {
+  none,
+  notOwner,
+  authorization,
+  storage,
+  extraction,
+  verification,
+  network,
+  setup,
+  unknown;
+
+  String get label {
+    return switch (this) {
+      BackupFailureCategory.none => 'None',
+      BackupFailureCategory.notOwner => 'Not owner',
+      BackupFailureCategory.authorization => 'Authorization',
+      BackupFailureCategory.storage => 'Storage',
+      BackupFailureCategory.extraction => 'Extraction',
+      BackupFailureCategory.verification => 'Verification',
+      BackupFailureCategory.network => 'Network',
+      BackupFailureCategory.setup => 'Setup',
+      BackupFailureCategory.unknown => 'Unknown',
+    };
+  }
+}
+
+class BackupNotebookOutcome {
+  const BackupNotebookOutcome({
+    required this.notebookName,
+    required this.status,
+    required this.category,
+    required this.message,
+    this.nextAction,
+    this.backupRecordId,
+    this.pageCount,
+    this.archiveBytes,
+    this.verifiedOriginalAttachmentCount,
+    this.expectedOriginalAttachmentCount,
+  });
+
+  final String notebookName;
+  final BackupOutcomeStatus status;
+  final BackupFailureCategory category;
+  final String message;
+  final String? nextAction;
+  final String? backupRecordId;
+  final int? pageCount;
+  final int? archiveBytes;
+  final int? verifiedOriginalAttachmentCount;
+  final int? expectedOriginalAttachmentCount;
+
+  bool get isSuccess => status == BackupOutcomeStatus.success;
+
+  String get summary {
+    if (isSuccess) {
+      final originals =
+          verifiedOriginalAttachmentCount == null ||
+              expectedOriginalAttachmentCount == null
+          ? null
+          : '$verifiedOriginalAttachmentCount/$expectedOriginalAttachmentCount originals';
+      final pieces = [if (pageCount != null) '$pageCount pages', ?originals];
+      return pieces.isEmpty ? message : pieces.join(' · ');
+    }
+    return nextAction == null ? message : '$message $nextAction';
+  }
+
+  Map<String, Object?> toJson() => {
+    'notebookName': notebookName,
+    'status': status.name,
+    'category': category.name,
+    'message': message,
+    'nextAction': nextAction,
+    'backupRecordId': backupRecordId,
+    'pageCount': pageCount,
+    'archiveBytes': archiveBytes,
+    'verifiedOriginalAttachmentCount': verifiedOriginalAttachmentCount,
+    'expectedOriginalAttachmentCount': expectedOriginalAttachmentCount,
+  };
+
+  static BackupNotebookOutcome fromJson(Map<String, Object?> json) {
+    return BackupNotebookOutcome(
+      notebookName: json['notebookName'] as String? ?? 'Notebook',
+      status: BackupOutcomeStatus.values.firstWhere(
+        (value) => value.name == json['status'],
+        orElse: () => BackupOutcomeStatus.skipped,
+      ),
+      category: BackupFailureCategory.values.firstWhere(
+        (value) => value.name == json['category'],
+        orElse: () => BackupFailureCategory.unknown,
+      ),
+      message: json['message'] as String? ?? '',
+      nextAction: json['nextAction'] as String?,
+      backupRecordId: json['backupRecordId'] as String?,
+      pageCount: json['pageCount'] as int?,
+      archiveBytes: json['archiveBytes'] as int?,
+      verifiedOriginalAttachmentCount:
+          json['verifiedOriginalAttachmentCount'] as int?,
+      expectedOriginalAttachmentCount:
+          json['expectedOriginalAttachmentCount'] as int?,
+    );
+  }
+}
+
+class BackupRunManifest {
+  const BackupRunManifest({
+    required this.id,
+    required this.createdAt,
+    required this.completedAt,
+    required this.totalNotebookCount,
+    required this.outcomes,
+    required this.records,
+    required this.log,
+  });
+
+  final String id;
+  final DateTime createdAt;
+  final DateTime completedAt;
+  final int totalNotebookCount;
+  final List<BackupNotebookOutcome> outcomes;
+  final List<BackupRecord> records;
+  final List<String> log;
+
+  int get successCount => outcomes.where((outcome) => outcome.isSuccess).length;
+
+  int get skippedCount => outcomes.length - successCount;
+
+  bool get hasFailures => skippedCount > 0;
+
+  String get createdAtLabel {
+    final local = createdAt.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String get summary {
+    final pieces = <String>[
+      '$successCount backed up',
+      if (skippedCount > 0) '$skippedCount skipped',
+    ];
+    return pieces.join(' · ');
+  }
+
+  Map<String, Object?> toJson() => {
+    'version': 2,
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'completedAt': completedAt.toIso8601String(),
+    'totalNotebookCount': totalNotebookCount,
+    'successCount': successCount,
+    'skippedCount': skippedCount,
+    'outcomes': outcomes.map((outcome) => outcome.toJson()).toList(),
+    'records': records.map((record) => record.toJson()).toList(),
+    'log': log,
+  };
+
+  static BackupRunManifest fromJson(Map<String, Object?> json) {
+    final records = (json['records'] as List<Object?>? ?? const [])
+        .whereType<Map<String, Object?>>()
+        .map(BackupRecord.fromJson)
+        .toList();
+    final outcomes = (json['outcomes'] as List<Object?>? ?? const [])
+        .whereType<Map<String, Object?>>()
+        .map(BackupNotebookOutcome.fromJson)
+        .toList();
+    return BackupRunManifest(
+      id: json['id'] as String? ?? '',
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      completedAt:
+          DateTime.tryParse(json['completedAt'] as String? ?? '') ??
+          DateTime.parse(json['createdAt'] as String),
+      totalNotebookCount:
+          json['totalNotebookCount'] as int? ??
+          json['notebookCount'] as int? ??
+          records.length,
+      outcomes: outcomes.isEmpty
+          ? records
+                .map(
+                  (record) => BackupNotebookOutcome(
+                    notebookName: record.notebookName,
+                    status: BackupOutcomeStatus.success,
+                    category: BackupFailureCategory.none,
+                    message: 'Backed up successfully.',
+                    backupRecordId: record.id,
+                    pageCount: record.pageCount,
+                    archiveBytes: record.contentVerification?.archiveBytes,
+                    verifiedOriginalAttachmentCount: record
+                        .contentVerification
+                        ?.verifiedOriginalAttachmentCount,
+                    expectedOriginalAttachmentCount: record
+                        .contentVerification
+                        ?.expectedOriginalAttachmentCount,
+                  ),
+                )
+                .toList()
+          : outcomes,
+      records: records,
+      log: (json['log'] as List<Object?>? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
+    );
+  }
+}
+
 class BackupIntegrityCheck {
   const BackupIntegrityCheck({
     required this.backupId,
@@ -205,6 +420,52 @@ class BackupIntegrityCheck {
     }
     return pieces.isEmpty ? 'Integrity check needs review.' : pieces.join('; ');
   }
+
+  Map<String, Object?> toJson() => {
+    'backupId': backupId,
+    'checkedAt': checkedAt.toIso8601String(),
+    'hasManifest': hasManifest,
+    'hasLocalSeal': hasLocalSeal,
+    'manifestPath': manifestPath,
+    'manifestSha256': manifestSha256,
+    'sealedManifestSha256': sealedManifestSha256,
+    'checkedFileCount': checkedFileCount,
+    'checkedBytes': checkedBytes,
+    'missingFiles': missingFiles,
+    'changedFiles': changedFiles,
+    'extraFiles': extraFiles,
+    'error': error,
+    'isVerified': isVerified,
+    'statusTitle': statusTitle,
+    'summary': summary,
+  };
+}
+
+class BackupAuditExport {
+  const BackupAuditExport({
+    required this.generatedAt,
+    required this.markdownPath,
+    required this.jsonPath,
+    required this.csvPath,
+    required this.hashAnchorPath,
+    required this.integrityCheck,
+  });
+
+  final DateTime generatedAt;
+  final String markdownPath;
+  final String jsonPath;
+  final String csvPath;
+  final String hashAnchorPath;
+  final BackupIntegrityCheck integrityCheck;
+
+  Map<String, Object?> toJson() => {
+    'generatedAt': generatedAt.toIso8601String(),
+    'markdownPath': markdownPath,
+    'jsonPath': jsonPath,
+    'csvPath': csvPath,
+    'hashAnchorPath': hashAnchorPath,
+    'integrityCheck': integrityCheck.toJson(),
+  };
 }
 
 class BackupContentVerification {

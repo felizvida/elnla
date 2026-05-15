@@ -26,22 +26,39 @@ in the app and in the documentation so backup failures are easier to understand.
 
 - Prompts for LabArchives GOV credentials on first launch.
 - Lets the user choose the local folder for routine backup copies.
+- Runs a Backup Center preflight for local credentials, notebook list, backup
+  folder writability, disk space, archive extraction, read-only API guardrails,
+  search configuration, and schedule state.
+- Records structured per-notebook run outcomes with classified skip reasons and
+  local run logs, then surfaces persistent notebook status cards in the backup
+  pane.
 - Backs up every notebook the authenticated user owns and can back up through
   the LabArchives API.
+- Uses a production read-only LabArchives allowlist for login, user-access
+  lookup, and notebook backup download only; it does not add, update, delete,
+  upload, or restore content to LabArchives.
 - Keeps the original LabArchives `.7z` archive for preservation.
 - Extracts and indexes notebook pages for local read-only viewing.
+- Shows page breadcrumbs, page counts, comment counts, attachment counts, and a
+  compact page outline in the offline reader.
 - Writes a separate readable Markdown copy plus JSONL search chunks for every
   successful backup.
 - Provides notebook search with local fuzzy fallback and OpenAI-powered
-  natural-language answers when the user saves an OpenAI API key locally.
+  natural-language answers when the user saves an OpenAI API key locally,
+  including filters for text, attachments, comments, exact phrase, and verified
+  backups.
 - Recognizes LabArchives attachment families in the viewer, including browser
   images, text/tabular files, PDFs, Office documents, Jupyter notebooks,
   SnapGene/sequence files, chemical structure files, media, archives, and
   unknown custom formats.
+- Shows attachment preservation evidence in the viewer, including original
+  payload indexing, LabArchives-viewable status, byte size, and restore action.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
 - Seals each successful backup with a SHA-256 integrity manifest and warns in
   the viewer if any protected file changes later.
+- Exports local audit summaries for backup runs as Markdown, JSON, and CSV
+  sidecars without exposing credentials.
 - Stores credentials, user access XML, notebook IDs, schedules, and backups in
   local ignored paths or in the user-selected backup folder.
 - Supports manual backup plus daily or weekly scheduled backup while the app is
@@ -71,6 +88,8 @@ Current status:
 
 ```text
 docs/
+  strategic_plan.md
+  implementation_limitations.md
   assets/
     benchvault-banner.svg
     screenshots/
@@ -91,12 +110,25 @@ tool/
 
 - [Quickstart PDF](docs/user/BenchVault_Quickstart.pdf)
 - [Quickstart source](docs/user/quickstart.md)
+- [Strategic implementation plan](docs/strategic_plan.md)
+- [Implementation limitations](docs/implementation_limitations.md)
+- [Platform release checklist](docs/platform_release_checklist.md)
 - [LabArchives GOV API working reference](docs/developer/labarchives_gov_api_reference.md)
 - [Documentation index](docs/README.md)
 
 The original LabArchives API source PDF is intentionally local-only under
 `local_docs/` and is ignored by Git. The compact developer reference is the
 tracked substitute used during implementation.
+
+## Current Limitations
+
+BenchVault is macOS-first and focused on LabArchives GOV backup/offline viewing.
+It is not a LabArchives editor, legal certification system, immutable storage
+system, or background service. Automatic backups currently run only while the
+app is open, readable views simplify some LabArchives formatting, and Windows
+and iPad support still need platform validation. See the
+[implementation limitations](docs/implementation_limitations.md) for the full
+list.
 
 ## Local-Only Data Rules
 
@@ -122,9 +154,18 @@ Useful helper commands:
 
 ```sh
 python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser
-python3 scripts/labarchives_seed_bio_test_notebook.py
 dart run tool/backup_once.dart
 python3 tool/build_quickstart_pdf.py
+scripts/release_smoke_check.sh
+```
+
+The synthetic test-notebook seeder is intentionally write-capable and is locked
+behind a double opt-in so it cannot be run accidentally:
+
+```sh
+BENCHVAULT_ALLOW_LABARCHIVES_TEST_WRITES=YES_WRITE_SYNTHETIC_TEST_NOTEBOOK \
+  python3 scripts/labarchives_seed_bio_test_notebook.py \
+  --i-understand-this-writes-to-labarchives-test-notebook
 ```
 
 For clean public screenshots, run the app with demo data:

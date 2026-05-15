@@ -6,6 +6,11 @@ notebook when needed, adds folders/pages, writes text/rich-text content,
 uploads bio-lab fixture files, and saves all returned IDs locally. It
 deliberately prints only high-level progress; exact IDs stay in ignored local
 files.
+
+This is the only write-capable LabArchives helper in the repository. It is for
+synthetic integration notebooks only and refuses to contact write endpoints
+unless both the explicit command-line acknowledgement and environment guard are
+present.
 """
 
 from __future__ import annotations
@@ -35,6 +40,18 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ROOT / "local_credentials"
 BASE_URL = "https://api.labarchives-gov.com"
 API_PAUSE_SECONDS = 1.05
+INTEGRATION_NOTEBOOK_PREFIX = "BenchVault Integration Test"
+WRITE_GUARD_ENV = "BENCHVAULT_ALLOW_LABARCHIVES_TEST_WRITES"
+WRITE_GUARD_VALUE = "YES_WRITE_SYNTHETIC_TEST_NOTEBOOK"
+WRITE_ACK_FLAG = "--i-understand-this-writes-to-labarchives-test-notebook"
+MUTATING_ELN_ENDPOINTS = {
+    ("entries", "add_attachment"),
+    ("entries", "add_comment"),
+    ("entries", "add_entry"),
+    ("notebooks", "create_notebook"),
+    ("tree_tools", "insert_node"),
+}
+_WRITES_ENABLED = False
 LAB_STORY = (
     "Synthetic NICHD long-running model-systems program: a lab chief-led group "
     "that has spent decades testing one coherent hypothesis: hypoxia and "
@@ -128,7 +145,24 @@ def read_response(req: request.Request, timeout: int) -> bytes:
     raise RuntimeError("unreachable retry loop")
 
 
+def require_seed_write_enabled(api_class: str, method: str) -> None:
+    if _WRITES_ENABLED:
+        return
+    raise RuntimeError(
+        f"Refusing LabArchives write endpoint {api_class}::{method}. "
+        f"Run only against a synthetic notebook with {WRITE_ACK_FLAG} and "
+        f"{WRITE_GUARD_ENV}={WRITE_GUARD_VALUE}."
+    )
+
+
+def enable_seed_writes() -> None:
+    global _WRITES_ENABLED
+    _WRITES_ENABLED = True
+
+
 def api_get(api_class: str, method: str, params: Dict[str, str]) -> bytes:
+    if (api_class, method) in MUTATING_ELN_ENDPOINTS:
+        require_seed_write_enabled(api_class, method)
     creds = load_env(LOCAL / "labarchives.env")
     expires_ms = f"{int(time.time())}000"
     query = {
@@ -143,6 +177,7 @@ def api_get(api_class: str, method: str, params: Dict[str, str]) -> bytes:
 
 
 def api_post_form(api_class: str, method: str, query_params: Dict[str, str], form: Dict[str, str]) -> bytes:
+    require_seed_write_enabled(api_class, method)
     creds = load_env(LOCAL / "labarchives.env")
     expires_ms = f"{int(time.time())}000"
     query = {
@@ -164,6 +199,7 @@ def api_post_form(api_class: str, method: str, query_params: Dict[str, str], for
 
 
 def api_post_bytes(api_class: str, method: str, query_params: Dict[str, str], payload: bytes) -> bytes:
+    require_seed_write_enabled(api_class, method)
     creds = load_env(LOCAL / "labarchives.env")
     expires_ms = f"{int(time.time())}000"
     query = {
@@ -195,7 +231,7 @@ def xml_text(xml: bytes, *paths: str) -> str:
 
 def create_notebook(uid: str) -> Tuple[str, str]:
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    name = f"BenchVault Integration Test {stamp}"
+    name = f"{INTEGRATION_NOTEBOOK_PREFIX} {stamp}"
     xml = api_get(
         "notebooks",
         "create_notebook",
@@ -415,7 +451,42 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create a new integration notebook instead of reusing the latest local one.",
     )
+    parser.add_argument(
+        WRITE_ACK_FLAG,
+        dest="acknowledge_labarchives_writes",
+        action="store_true",
+        help="Required: confirm this run may write synthetic content to a dedicated LabArchives integration notebook.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Explain the write guard and exit without reading credentials or contacting LabArchives.",
+    )
     return parser.parse_args()
+
+
+def ensure_explicit_write_intent(args: argparse.Namespace) -> bool:
+    if args.dry_run:
+        print(
+            "Dry run only. This helper writes synthetic folders, pages, text, comments, "
+            "and attachments to a dedicated LabArchives integration notebook."
+        )
+        print(
+            f"To run it, set {WRITE_GUARD_ENV}={WRITE_GUARD_VALUE} and pass {WRITE_ACK_FLAG}."
+        )
+        return False
+    if not args.acknowledge_labarchives_writes:
+        raise SystemExit(
+            f"Refusing to contact LabArchives. This helper writes synthetic test content. "
+            f"Pass {WRITE_ACK_FLAG} when you intentionally want that."
+        )
+    if os.environ.get(WRITE_GUARD_ENV) != WRITE_GUARD_VALUE:
+        raise SystemExit(
+            f"Refusing to contact LabArchives. Set {WRITE_GUARD_ENV}={WRITE_GUARD_VALUE} "
+            "only for an intentional synthetic test-notebook population run."
+        )
+    enable_seed_writes()
+    return True
 
 
 def load_existing_integration_notebook() -> Tuple[str, str] | None:
@@ -427,7 +498,7 @@ def load_existing_integration_notebook() -> Tuple[str, str] | None:
         for row in reader:
             name = row.get("notebook_name", "").strip()
             nbid = row.get("nbid", "").strip()
-            if name and nbid:
+            if name.startswith(INTEGRATION_NOTEBOOK_PREFIX) and nbid:
                 return name, nbid
     return None
 
@@ -441,7 +512,7 @@ def notebook_choice(uid: str, fresh: bool) -> Tuple[str, str]:
         reusable = [
             (name, nbid)
             for name, nbid, _ in refresh_notebooks(uid)
-            if name.startswith("BenchVault Integration Test")
+            if name.startswith(INTEGRATION_NOTEBOOK_PREFIX)
         ]
         if reusable:
             reusable.sort(reverse=True)
@@ -1191,6 +1262,8 @@ def add_verbose_page(uid: str, nbid: str, pid: str, page_title: str, focus: str,
 
 def main() -> int:
     args = parse_args()
+    if not ensure_explicit_write_intent(args):
+        return 0
     user = load_env(LOCAL / "labarchives_user.env")
     uid = user["LABARCHIVES_GOV_UID"]
     notebook_name, nbid = notebook_choice(uid, args.fresh)

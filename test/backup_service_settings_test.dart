@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:benchvault/src/backup_models.dart';
 import 'package:benchvault/src/backup_service.dart';
 import 'package:benchvault/src/notebook_search_service.dart';
+import 'package:benchvault/src/preflight_models.dart';
 import 'package:benchvault/src/search_models.dart';
 import 'package:benchvault/src/setup_models.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +36,145 @@ void main() {
     expect(loaded.schedule.frequency, BackupFrequency.weekly);
     expect(loaded.schedule.minutesAfterMidnight, 7 * 60 + 15);
     expect(loaded.schedule.weekday, DateTime.thursday);
+  });
+
+  test('preflight blocks backup when setup files are missing', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_preflight_missing_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final report = await BackupService(root: root).runPreflight();
+    final credentials = report.checks.firstWhere(
+      (check) => check.id == 'credentials',
+    );
+    final notebookIndex = report.checks.firstWhere(
+      (check) => check.id == 'notebook_index',
+    );
+
+    expect(report.canRunBackup, isFalse);
+    expect(credentials.status, PreflightStatus.fail);
+    expect(notebookIndex.status, PreflightStatus.fail);
+  });
+
+  test('preflight reports ready local setup and read-only contract', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_preflight_ready_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final local = Directory('${root.path}/local_credentials');
+    await local.create(recursive: true);
+    await File('${local.path}/labarchives.env').writeAsString(
+      'LABARCHIVES_GOV_LOGIN_ID=fake\nLABARCHIVES_GOV_ACCESS_KEY=fake\n',
+    );
+    await File(
+      '${local.path}/labarchives_user.env',
+    ).writeAsString('LABARCHIVES_GOV_UID=fake_uid\n');
+    await File(
+      '${local.path}/notebooks.tsv',
+    ).writeAsString('name\tnbid\tis_default\nDemo\tfake_nbid\ttrue\n');
+
+    final service = BackupService(root: root);
+    await service.saveBackupSettings(
+      BackupSettings.defaults('${root.path}/routine_backups'),
+    );
+
+    final report = await service.runPreflight();
+    final credentials = report.checks.firstWhere(
+      (check) => check.id == 'credentials',
+    );
+    final notebookIndex = report.checks.firstWhere(
+      (check) => check.id == 'notebook_index',
+    );
+    final readOnly = report.checks.firstWhere(
+      (check) => check.id == 'read_only_contract',
+    );
+    final backupFolder = report.checks.firstWhere(
+      (check) => check.id == 'backup_folder',
+    );
+
+    expect(credentials.status, PreflightStatus.pass);
+    expect(notebookIndex.status, PreflightStatus.pass);
+    expect(readOnly.status, PreflightStatus.pass);
+    expect(backupFolder.status, PreflightStatus.pass);
+    expect(
+      report.blockingChecks.map((check) => check.id),
+      isNot(contains('credentials')),
+    );
+    expect(
+      report.blockingChecks.map((check) => check.id),
+      isNot(contains('notebook_index')),
+    );
+  });
+
+  test('latest backup run manifest preserves outcomes and log', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_run_manifest_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final runDir = Directory('${root.path}/backups/runs/2026/05/14');
+    await runDir.create(recursive: true);
+    final record = BackupRecord(
+      id: 'run_001_demo',
+      notebookName: 'Demo',
+      createdAt: DateTime.utc(2026, 5, 14, 12),
+      archivePath: 'notebooks/demo/2026/05/14/run_001/notebook.7z',
+      renderPath: 'notebooks/demo/2026/05/14/run_001/render_notebook.json',
+      pageCount: 3,
+      contentVerification: const BackupContentVerification(
+        archiveBytes: 900,
+        expectedOriginalAttachmentCount: 2,
+        verifiedOriginalAttachmentCount: 2,
+        expectedOriginalAttachmentBytes: 700,
+        verifiedOriginalAttachmentBytes: 700,
+        manifestPath:
+            'notebooks/demo/2026/05/14/run_001/original_files_manifest.json',
+        missingOriginals: [],
+        sizeMismatches: [],
+      ),
+    );
+    final manifest = BackupRunManifest(
+      id: 'run_001',
+      createdAt: DateTime.utc(2026, 5, 14, 12),
+      completedAt: DateTime.utc(2026, 5, 14, 12, 2),
+      totalNotebookCount: 2,
+      records: [record],
+      outcomes: [
+        BackupNotebookOutcome(
+          notebookName: 'Demo',
+          status: BackupOutcomeStatus.success,
+          category: BackupFailureCategory.none,
+          message: 'Backed up successfully.',
+          backupRecordId: record.id,
+          pageCount: record.pageCount,
+          archiveBytes: 900,
+          verifiedOriginalAttachmentCount: 2,
+          expectedOriginalAttachmentCount: 2,
+        ),
+        const BackupNotebookOutcome(
+          notebookName: 'Visible but not owned',
+          status: BackupOutcomeStatus.skipped,
+          category: BackupFailureCategory.notOwner,
+          message: 'Full-size backup is owner-only for this notebook.',
+          nextAction: 'Ask the PI owner to run the backup.',
+        ),
+      ],
+      log: const ['Finished Demo', 'Skipped Visible but not owned'],
+    );
+    await File('${runDir.path}/run_001.json').writeAsString(
+      const JsonEncoder.withIndent('  ').convert(manifest.toJson()),
+    );
+
+    final loaded = await BackupService(root: root).loadLatestBackupRun();
+
+    expect(loaded, isNotNull);
+    expect(loaded!.successCount, 1);
+    expect(loaded.skippedCount, 1);
+    expect(loaded.totalNotebookCount, 2);
+    expect(loaded.outcomes.last.category, BackupFailureCategory.notOwner);
+    expect(loaded.log, contains('Finished Demo'));
   });
 
   test(
@@ -283,6 +423,26 @@ void main() {
     expect(fuzzyResult.usedOpenAi, isFalse);
     expect(fuzzyResult.hits.single.chunk.pageTitle, 'Zebrafish hypoxia assay');
     expect(fuzzyResult.answer, contains('Local fuzzy search'));
+
+    final attachmentResult = await NotebookSearchService(service).search(
+      'zebrafish_image.czi',
+      filters: const NotebookSearchFilters(
+        scope: NotebookSearchScope.attachments,
+        exactPhrase: true,
+      ),
+    );
+    expect(
+      attachmentResult.hits.single.chunk.attachments.single,
+      contains('.czi'),
+    );
+    expect(attachmentResult.filters.scope, NotebookSearchScope.attachments);
+
+    final verifiedOnlyResult = await NotebookSearchService(service).search(
+      'zebrafish',
+      filters: const NotebookSearchFilters(verifiedOnly: true),
+    );
+    expect(verifiedOnlyResult.hits, isEmpty);
+    expect(verifiedOnlyResult.answer, contains('selected search filters'));
   });
 
   test('integrity seal detects byte-level backup changes', () async {
@@ -332,4 +492,74 @@ void main() {
     expect(tampered.changedFiles, contains(sealed.archivePath));
     expect(tampered.statusTitle, 'Backup contents changed');
   });
+
+  test(
+    'audit export writes markdown json and csv with relative paths',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'benchvault_audit_export_test_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final service = BackupService(root: root);
+      final runDir = Directory(
+        '${root.path}/backups/notebooks/demo/2026/05/14/run_004',
+      );
+      await runDir.create(recursive: true);
+      await File('${runDir.path}/notebook.7z').writeAsBytes([4, 5, 6]);
+      await File('${runDir.path}/render_notebook.json').writeAsString(
+        jsonEncode({
+          'name': 'Audit Demo',
+          'createdAt': DateTime.utc(2026, 5, 14).toIso8601String(),
+          'archivePath': 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+          'nodes': <Object?>[],
+        }),
+      );
+      final record = BackupRecord(
+        id: 'run_004_demo',
+        notebookName: 'Audit Demo',
+        createdAt: DateTime.utc(2026, 5, 14),
+        archivePath: 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+        renderPath: 'notebooks/demo/2026/05/14/run_004/render_notebook.json',
+        pageCount: 0,
+        contentVerification: const BackupContentVerification(
+          archiveBytes: 3,
+          expectedOriginalAttachmentCount: 0,
+          verifiedOriginalAttachmentCount: 0,
+          expectedOriginalAttachmentBytes: 0,
+          verifiedOriginalAttachmentBytes: 0,
+          manifestPath:
+              'notebooks/demo/2026/05/14/run_004/original_files_manifest.json',
+          missingOriginals: [],
+          sizeMismatches: [],
+        ),
+      );
+
+      final sealed = await service.sealBackupIntegrity(record);
+      final audit = await service.exportAuditSummary(sealed);
+
+      expect(audit.markdownPath, isNot(startsWith(root.path)));
+      expect(audit.jsonPath, isNot(startsWith(root.path)));
+      expect(audit.csvPath, isNot(startsWith(root.path)));
+      expect(audit.hashAnchorPath, isNot(startsWith(root.path)));
+      expect(audit.integrityCheck.isVerified, isTrue);
+      expect(
+        await File('${root.path}/backups/${audit.markdownPath}').readAsString(),
+        contains('BenchVault Backup Audit Summary'),
+      );
+      expect(
+        await File('${root.path}/backups/${audit.csvPath}').readAsString(),
+        contains('path,bytes,sha256,modifiedAt'),
+      );
+      expect(
+        await File(
+          '${root.path}/backups/${audit.hashAnchorPath}',
+        ).readAsString(),
+        contains('Manifest SHA-256'),
+      );
+
+      final afterExport = await service.verifyBackupIntegrity(sealed);
+      expect(afterExport.isVerified, isTrue);
+    },
+  );
 }

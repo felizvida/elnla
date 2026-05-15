@@ -16,6 +16,58 @@ class OpenAiSearchSettings {
   }
 }
 
+enum NotebookSearchScope {
+  all,
+  pageText,
+  attachments,
+  comments;
+
+  String get label {
+    return switch (this) {
+      NotebookSearchScope.all => 'All',
+      NotebookSearchScope.pageText => 'Text',
+      NotebookSearchScope.attachments => 'Attachments',
+      NotebookSearchScope.comments => 'Comments',
+    };
+  }
+}
+
+class NotebookSearchFilters {
+  const NotebookSearchFilters({
+    this.scope = NotebookSearchScope.all,
+    this.exactPhrase = false,
+    this.verifiedOnly = false,
+  });
+
+  final NotebookSearchScope scope;
+  final bool exactPhrase;
+  final bool verifiedOnly;
+
+  bool get isDefault =>
+      scope == NotebookSearchScope.all && !exactPhrase && !verifiedOnly;
+
+  String get summary {
+    final pieces = <String>[
+      scope.label,
+      if (exactPhrase) 'exact phrase',
+      if (verifiedOnly) 'verified backups',
+    ];
+    return pieces.join(' · ');
+  }
+
+  NotebookSearchFilters copyWith({
+    NotebookSearchScope? scope,
+    bool? exactPhrase,
+    bool? verifiedOnly,
+  }) {
+    return NotebookSearchFilters(
+      scope: scope ?? this.scope,
+      exactPhrase: exactPhrase ?? this.exactPhrase,
+      verifiedOnly: verifiedOnly ?? this.verifiedOnly,
+    );
+  }
+}
+
 class NotebookSearchChunk {
   const NotebookSearchChunk({
     required this.id,
@@ -98,6 +150,7 @@ class NotebookSearchResult {
     required this.answer,
     required this.hits,
     required this.usedOpenAi,
+    this.filters = const NotebookSearchFilters(),
     this.warning,
   });
 
@@ -105,5 +158,6 @@ class NotebookSearchResult {
   final String answer;
   final List<NotebookSearchHit> hits;
   final bool usedOpenAi;
+  final NotebookSearchFilters filters;
   final String? warning;
 }

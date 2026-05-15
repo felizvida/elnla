@@ -13,7 +13,10 @@ class NotebookSearchService {
 
   final BackupService backupService;
 
-  Future<NotebookSearchResult> search(String query) async {
+  Future<NotebookSearchResult> search(
+    String query, {
+    NotebookSearchFilters filters = const NotebookSearchFilters(),
+  }) async {
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty) {
       return const NotebookSearchResult(
@@ -24,29 +27,42 @@ class NotebookSearchService {
       );
     }
 
-    final chunks = await backupService.loadAllSearchChunks();
+    final chunks = await _filteredChunks(cleanQuery, filters);
     if (chunks.isEmpty) {
       return NotebookSearchResult(
         query: cleanQuery,
-        answer: 'No readable notebook copies are available yet.',
+        answer: filters.isDefault
+            ? 'No readable notebook copies are available yet.'
+            : 'No readable notebook copies match the selected search filters.',
         hits: const [],
         usedOpenAi: false,
+        filters: filters,
       );
     }
 
-    final localHits = _rankLocal(cleanQuery, chunks, limit: 12);
+    final localHits = _rankLocal(
+      cleanQuery,
+      chunks,
+      filters: filters,
+      limit: 12,
+    );
     final settings = await backupService.loadOpenAiSearchSettings();
     final hasOpenAi = settings != null && settings.hasApiKey;
     if (!hasOpenAi) {
       return NotebookSearchResult(
         query: cleanQuery,
-        answer: _localAnswer(localHits, missingOpenAiKey: true),
+        answer: _localAnswer(
+          localHits,
+          filters: filters,
+          missingOpenAiKey: true,
+        ),
         hits: localHits,
         usedOpenAi: false,
+        filters: filters,
       );
     }
 
-    final contextHits = _contextHits(cleanQuery, chunks);
+    final contextHits = _contextHits(cleanQuery, chunks, filters);
     try {
       final answer = await _askOpenAi(
         query: cleanQuery,
@@ -55,27 +71,71 @@ class NotebookSearchService {
       );
       return NotebookSearchResult(
         query: cleanQuery,
-        answer: answer.isEmpty ? _localAnswer(localHits) : answer,
+        answer: answer.isEmpty
+            ? _localAnswer(localHits, filters: filters)
+            : answer,
         hits: contextHits.take(12).toList(),
         usedOpenAi: answer.isNotEmpty,
+        filters: filters,
       );
     } catch (error) {
       return NotebookSearchResult(
         query: cleanQuery,
-        answer: _localAnswer(localHits, fallbackReason: 'OpenAI unavailable'),
+        answer: _localAnswer(
+          localHits,
+          filters: filters,
+          fallbackReason: 'OpenAI unavailable',
+        ),
         hits: localHits,
         usedOpenAi: false,
+        filters: filters,
         warning:
             'OpenAI search unavailable; showing local fuzzy fallback. ${_briefError(error)}',
       );
     }
   }
 
+  Future<List<NotebookSearchChunk>> _filteredChunks(
+    String query,
+    NotebookSearchFilters filters,
+  ) async {
+    var chunks = await backupService.loadAllSearchChunks();
+    if (filters.verifiedOnly) {
+      final backups = await backupService.loadBackups();
+      final verifiedIds = backups
+          .where((record) => record.contentVerification?.isComplete ?? false)
+          .map((record) => record.id)
+          .toSet();
+      chunks = chunks
+          .where((chunk) => verifiedIds.contains(chunk.backupId))
+          .toList();
+    }
+    chunks = switch (filters.scope) {
+      NotebookSearchScope.all => chunks,
+      NotebookSearchScope.pageText =>
+        chunks.where((chunk) => chunk.text.trim().isNotEmpty).toList(),
+      NotebookSearchScope.attachments =>
+        chunks.where((chunk) => chunk.attachments.isNotEmpty).toList(),
+      NotebookSearchScope.comments =>
+        chunks.where((chunk) => chunk.commentCount > 0).toList(),
+    };
+    if (filters.exactPhrase) {
+      final phrase = _normalize(query);
+      chunks = chunks
+          .where(
+            (chunk) => _chunkHaystack(chunk, filters.scope).contains(phrase),
+          )
+          .toList();
+    }
+    return chunks;
+  }
+
   List<NotebookSearchHit> _contextHits(
     String query,
     List<NotebookSearchChunk> chunks,
+    NotebookSearchFilters filters,
   ) {
-    final localHits = _rankLocal(query, chunks, limit: 24);
+    final localHits = _rankLocal(query, chunks, filters: filters, limit: 24);
     if (localHits.any((hit) => hit.score > 0)) {
       return localHits;
     }
@@ -96,12 +156,15 @@ class NotebookSearchService {
   List<NotebookSearchHit> _rankLocal(
     String query,
     List<NotebookSearchChunk> chunks, {
+    required NotebookSearchFilters filters,
     required int limit,
   }) {
     final tokens = _tokens(query);
     final queryText = _normalize(query);
     final queryTrigrams = _trigrams(queryText);
-    final profiles = chunks.map(_SearchProfile.new).toList();
+    final profiles = chunks
+        .map((chunk) => _SearchProfile(chunk, scope: filters.scope))
+        .toList();
     final documentFrequency = <String, int>{};
     var totalLength = 0;
     for (final profile in profiles) {
@@ -311,6 +374,19 @@ class NotebookSearchService {
         .trim();
   }
 
+  String _chunkHaystack(NotebookSearchChunk chunk, NotebookSearchScope scope) {
+    return switch (scope) {
+      NotebookSearchScope.all => _normalize(
+        '${chunk.notebookName} ${chunk.path} ${chunk.pageTitle} ${chunk.attachments.join(' ')} ${chunk.text}',
+      ),
+      NotebookSearchScope.pageText => _normalize(chunk.text),
+      NotebookSearchScope.attachments => _normalize(
+        chunk.attachments.join(' '),
+      ),
+      NotebookSearchScope.comments => _normalize(chunk.text),
+    };
+  }
+
   Set<String> _trigrams(String value) {
     final padded = '  ${_normalize(value)}  ';
     if (padded.trim().length < 3) {
@@ -348,6 +424,7 @@ class NotebookSearchService {
 
   String _localAnswer(
     List<NotebookSearchHit> hits, {
+    required NotebookSearchFilters filters,
     bool missingOpenAiKey = false,
     String? fallbackReason,
   }) {
@@ -367,7 +444,7 @@ class NotebookSearchService {
     if (hits.length != 1) {
       buffer.write('es');
     }
-    buffer.writeln('.');
+    buffer.writeln(' in ${filters.summary}.');
     buffer.writeln(_fallbackMethodSummary);
     if (missingOpenAiKey) {
       buffer.writeln(
@@ -538,8 +615,8 @@ class NotebookSearchService {
 }
 
 class _SearchProfile {
-  _SearchProfile(this.chunk)
-    : text = _sharedNormalize(chunk.text),
+  _SearchProfile(this.chunk, {required NotebookSearchScope scope})
+    : text = _profileText(chunk, scope),
       title = _sharedNormalize(chunk.pageTitle),
       path = _sharedNormalize(chunk.path),
       attachments = _sharedNormalize(chunk.attachments.join(' ')) {
@@ -573,6 +650,17 @@ class _SearchProfile {
   late final int termCount;
   late final Set<String> uniqueTokens;
   late final Set<String> trigrams;
+}
+
+String _profileText(NotebookSearchChunk chunk, NotebookSearchScope scope) {
+  return switch (scope) {
+    NotebookSearchScope.all => _sharedNormalize(chunk.text),
+    NotebookSearchScope.pageText => _sharedNormalize(chunk.text),
+    NotebookSearchScope.attachments => _sharedNormalize(
+      chunk.attachments.join(' '),
+    ),
+    NotebookSearchScope.comments => _sharedNormalize(chunk.text),
+  };
 }
 
 String _sharedNormalize(String value) {

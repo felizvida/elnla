@@ -32,6 +32,45 @@ Credential convention: real credentials, tokens, passwords, access keys, local a
 - Use `utilities::epoch_time` at app/session start to compare server time and adjust the `expires` value if the client clock is off.
 - The `expires` parameter is confusingly named in the ELN docs: it should be based on current epoch time, adjusted for server/client clock skew, not a far-future expiry.
 
+## BenchVault Read-Only Contract
+
+BenchVault is for backup and offline viewing. Production code must not write,
+edit, restore, upload, or otherwise mutate the original LabArchives notebook.
+
+Production LabArchives access is limited to:
+
+- `GET /api_user_login`: browser authorization handoff.
+- `GET /api/users/user_access_info`: exchange the returned auth code for UID
+  and user notebook metadata.
+- `GET /api/notebooks/notebook_backup`: download the full-size backup archive.
+
+Implementation guardrails:
+
+- Route ELN URLs through the typed read-only allowlist in
+  `lib/src/labarchives_client.dart`; do not add generic endpoint builders to
+  production code.
+- Keep production LabArchives calls on `GET`; never use POST, PUT, PATCH,
+  DELETE, or upload helpers against LabArchives in `lib/`.
+- Reject extra backup parameters that would weaken preservation, especially
+  `no_attachments=true`.
+- Keep all writes local: credentials under ignored local files, archives under
+  the user-selected backup folder, readable/search sidecars under the backup
+  run, and integrity ledgers under ignored local files.
+- The viewer may restore an attachment only by copying the backed-up original
+  payload to a user-selected local folder. It must never restore back to
+  LabArchives.
+
+Endpoints that are write-capable and must stay out of production include
+`entries::add_entry`, `entries::add_attachment`, `entries::add_comment`,
+`tree_tools::insert_node`, `notebooks::create_notebook`, and any method whose
+name begins with `add_`, `create_`, `delete_`, `insert_`, `move_`, `remove_`,
+`replace_`, `restore_`, `share_`, `submit_`, `update_`, or `upload_`.
+
+The synthetic integration-notebook seeder is separate from the app. It is the
+only write-capable helper and is locked behind both
+`BENCHVAULT_ALLOW_LABARCHIVES_TEST_WRITES=YES_WRITE_SYNTHETIC_TEST_NOTEBOOK`
+and `--i-understand-this-writes-to-labarchives-test-notebook`.
+
 ## Authentication
 
 ### ELN Query Parameters
@@ -467,14 +506,27 @@ Append notes here as coding work reveals practical behavior.
 - Integrity seal convention: after the archive, extracted files, render JSON, readable sidecars, original manifest, and backup record are written, create `integrity_manifest.json` with SHA-256 hashes for every protected backup-run file except the integrity manifest itself. Append the manifest hash to ignored `local_credentials/integrity_ledger.jsonl` as a local hash-chain ledger. The viewer verifies both the file hashes and the local seal before displaying the backup status; this is tamper-evidence, not a standalone legal certification.
 - NIH visual convention: use an NIH/HHS-aligned blue-first palette for the app and public assets. Primary blue `#005ea2`, dark blue `#162e51`, light blue `#e5faff`, gold accent `#face00`, and cool neutral surfaces keep the app close to the NIH/HHS web environment while preserving semantic status colors.
 - OpenAI search credential convention: store `OPENAI_API_KEY` and optional `OPENAI_MODEL` only in ignored `local_credentials/openai.env`. The app defaults the model to `gpt-5.5` and sends only the locally selected notebook excerpts needed for a natural-language answer.
+- Search filter convention: keep search filters local and deterministic before
+  OpenAI context selection. `All`, `Text`, `Files`, `Comments`, exact phrase,
+  and verified-only filters narrow the local chunk corpus first; OpenAI only sees
+  the filtered top-ranked excerpts.
 - Full-size original-content rule: never pass `no_attachments=true` to `notebooks::notebook_backup`. For every attachment in `entry_parts.json`, verify `notebook/attachments/<entry-part-id>/<version>/original/<filename>` exists and matches `attach_file_size`; write `original_files_manifest.json` with relative paths, sizes, and SHA-256 hashes.
 - Viewer restore rule: render sidecars include each attachment original's backup-relative path when the original file is present. The read-only viewer restores attachments by copying that original payload to a user-selected folder without overwriting existing files; legacy render files fall back to `extracted/notebook/attachments/<entry-part-id>/.../original/<filename>`.
 - Viewer attachment format rule: LabArchives allows arbitrary notebook attachments, with direct/cloud viewers for text, PDF, Office, common browser images, Jupyter `.ipynb`, and SnapGene/sequence families. BenchVault should preserve every original payload, inline-preview safe local formats, treat HTML/SVG as source text, and classify Office/PDF/SnapGene/TIFF/chemical/media/archive/custom files with restore-first affordances until dedicated renderers are added.
 - Viewer comment/link rule: parse `comments.json` by `entry_part_id` and render comments beneath their entry part. Convert HTML anchors to readable `label (URL)` text before stripping remaining HTML so link targets are not silently lost in the read-only view.
+- Viewer navigation convention: derive breadcrumbs and page outlines from
+  `tree_nodes.json` parent IDs and `entry_parts.json` relative positions. Treat
+  them as navigation aids only; do not infer legal provenance from those UI
+  affordances.
+- Audit export convention: write local review sidecars under each run's `audit/`
+  folder: `backup_audit_summary.md`, `backup_audit_summary.json`,
+  `integrity_files.csv`, and `external_hash_anchor.txt`. Exclude `audit/` from
+  protected-file verification so creating an audit packet does not make a sealed
+  backup appear modified.
 - Backup rights are stricter than notebook visibility. On May 14, 2026, visible non-owned notebooks returned ELN error `4547` with "does not have rights to perform requested action"; the app treats these as skipped notebooks during "backup all owned/backup-allowed notebooks."
 - NIH/NICHD policy context: lab notebook owners are lab chiefs/PIs, and only the notebook owner can use the full-size LabArchives backup API for that notebook. Users who can view a notebook but are not the PI owner should expect backup API denial.
 - Dedicated integration notebook seeded on May 14, 2026 with headings, rich text, plain text, comments, folders/pages, and bio-lab attachments covering CSV, TSV, FASTA, VCF, BED, GenBank, JSON, XML, Markdown, HTML, notebook, SVG, TXT, PDF, and PNG payloads.
-- Expanded NICHD storyline seed on May 14, 2026: `scripts/labarchives_seed_bio_test_notebook.py` now reuses the local integration notebook by default and adds a dated "NICHD Model Systems Lab Storyline" subtree. The seed creates 35 pages organized around a hypoxia/interferon developmental-stress hypothesis, with standard audit headers, sample accession/provenance/control records, zebrafish and mouse model pages, reproductive and placental systems, chemical biology, physical molecular biophysics, omics, shared-core instruments, QA/preservation, and archive payload pages. The generated run includes 97 shared fixture files plus one page-specific audit attachment per page, for 132 expected attachment uploads, including vendor-shaped placeholders, duplicate/weird filenames, a documented no-extension backup limitation using a `.txt` fixture, a zip stub, and a moderately large binary payload. Generated payload files and returned IDs stay under ignored `local_credentials/`.
+- Expanded NICHD storyline seed on May 14, 2026: `scripts/labarchives_seed_bio_test_notebook.py` now reuses the local integration notebook by default and adds a dated "NICHD Model Systems Lab Storyline" subtree. The seed creates 35 pages organized around a hypoxia/interferon developmental-stress hypothesis, with standard audit headers, sample accession/provenance/control records, zebrafish and mouse model pages, reproductive and placental systems, chemical biology, physical molecular biophysics, omics, shared-core instruments, QA/preservation, and archive payload pages. The generated run includes 97 shared fixture files plus one page-specific audit attachment per page, for 132 expected attachment uploads, including vendor-shaped placeholders, duplicate/weird filenames, a documented no-extension backup limitation using a `.txt` fixture, a zip stub, and a moderately large binary payload. Generated payload files and returned IDs stay under ignored `local_credentials/`. This helper is intentionally write-capable and now refuses to contact LabArchives write endpoints unless both the explicit acknowledgement flag and environment guard are present.
 - No-extension attachment limitation observed on May 14, 2026: LabArchives accepted no-extension uploads named `RAW_EXPORT` and `README_NO_EXTENSION`, but `notebooks::notebook_backup` omitted their `original/` payloads, causing BenchVault verification to fail with 267/271 originals. The seed now uses suffixed versions so the clean testing notebook can pass full-size backup verification.
 - Keep UID, organization ID, and lab ID discovery calls explicit:
   - ELN: `user_access_info` or `user_info_via_id`.

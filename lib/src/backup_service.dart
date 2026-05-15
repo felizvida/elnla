@@ -7,11 +7,24 @@ import 'package:crypto/crypto.dart';
 import 'backup_models.dart';
 import 'backup_parser.dart';
 import 'labarchives_client.dart';
+import 'preflight_models.dart';
 import 'readable_notebook_exporter.dart';
 import 'search_models.dart';
 import 'setup_models.dart';
 
 typedef ProgressCallback = void Function(String message);
+
+class _BackupFailure {
+  const _BackupFailure({
+    required this.category,
+    required this.message,
+    required this.nextAction,
+  });
+
+  final BackupFailureCategory category;
+  final String message;
+  final String nextAction;
+}
 
 class BackupService {
   BackupService({Directory? root}) : root = root ?? _findProjectRoot();
@@ -104,6 +117,294 @@ class BackupService {
       return null;
     }
     return OpenAiSearchSettings(apiKey: apiKey, model: model);
+  }
+
+  Future<BackupPreflightReport> runPreflight() async {
+    final checks = <PreflightCheck>[];
+    final setupStatus = await loadSetupStatus();
+    final settings = await loadBackupSettings();
+    final openAiSettings = await loadOpenAiSearchSettings();
+
+    checks.add(_setupPreflight(setupStatus));
+    checks.add(_notebookIndexPreflight(setupStatus));
+    checks.add(await _backupFolderPreflight(settings.backupRootPath));
+    checks.add(await _diskSpacePreflight(settings.backupRootPath));
+    checks.add(await _archiveExtractorPreflight());
+    checks.add(_readOnlyContractPreflight());
+    checks.add(_openAiPreflight(openAiSettings));
+    checks.add(_schedulePreflight(settings.schedule));
+
+    return BackupPreflightReport(
+      generatedAt: DateTime.now().toUtc(),
+      checks: checks,
+    );
+  }
+
+  PreflightCheck _setupPreflight(LocalSetupStatus setupStatus) {
+    if (setupStatus.hasCredentials && setupStatus.hasUserAccess) {
+      return const PreflightCheck(
+        id: 'credentials',
+        title: 'LabArchives authorization',
+        detail: 'Credentials and UID are present in local-only setup files.',
+        status: PreflightStatus.pass,
+      );
+    }
+    return const PreflightCheck(
+      id: 'credentials',
+      title: 'LabArchives authorization',
+      detail: 'Credentials or UID are missing.',
+      status: PreflightStatus.fail,
+      nextAction: 'Connect LabArchives credentials from setup.',
+    );
+  }
+
+  PreflightCheck _notebookIndexPreflight(LocalSetupStatus setupStatus) {
+    if (!setupStatus.hasNotebookIndex) {
+      return const PreflightCheck(
+        id: 'notebook_index',
+        title: 'Notebook list',
+        detail: 'The local notebook list has not been created yet.',
+        status: PreflightStatus.fail,
+        nextAction: 'Complete LabArchives setup to capture notebook metadata.',
+      );
+    }
+    if (setupStatus.notebookCount == 0) {
+      return const PreflightCheck(
+        id: 'notebook_index',
+        title: 'Notebook list',
+        detail: 'The local notebook list exists but contains no notebooks.',
+        status: PreflightStatus.warning,
+        nextAction:
+            'Reconnect setup after confirming the account owns backup-eligible notebooks.',
+      );
+    }
+    return PreflightCheck(
+      id: 'notebook_index',
+      title: 'Notebook list',
+      detail:
+          '${setupStatus.notebookCount} notebook${setupStatus.notebookCount == 1 ? '' : 's'} available for backup attempts.',
+      status: PreflightStatus.pass,
+    );
+  }
+
+  Future<PreflightCheck> _backupFolderPreflight(String backupRootPath) async {
+    final cleanPath = backupRootPath.trim();
+    if (cleanPath.isEmpty) {
+      return const PreflightCheck(
+        id: 'backup_folder',
+        title: 'Backup folder',
+        detail: 'No backup folder is configured.',
+        status: PreflightStatus.fail,
+        nextAction: 'Choose a protected local backup folder.',
+      );
+    }
+    final directory = Directory(cleanPath);
+    try {
+      await directory.create(recursive: true);
+      final probe = File(_join(directory.path, '.benchvault_preflight.tmp'));
+      await probe.writeAsString('benchvault preflight\n');
+      await probe.delete();
+      return PreflightCheck(
+        id: 'backup_folder',
+        title: 'Backup folder',
+        detail: 'Writable: ${_relative(cleanPath)}',
+        status: PreflightStatus.pass,
+      );
+    } catch (error) {
+      return PreflightCheck(
+        id: 'backup_folder',
+        title: 'Backup folder',
+        detail: 'The configured backup folder is not writable: $error',
+        status: PreflightStatus.fail,
+        nextAction: 'Choose a folder that this Mac account can write to.',
+      );
+    }
+  }
+
+  Future<PreflightCheck> _diskSpacePreflight(String backupRootPath) async {
+    final cleanPath = backupRootPath.trim();
+    if (cleanPath.isEmpty) {
+      return const PreflightCheck(
+        id: 'disk_space',
+        title: 'Backup storage',
+        detail: 'Disk space cannot be checked until a backup folder is set.',
+        status: PreflightStatus.warning,
+      );
+    }
+    if (Platform.isWindows) {
+      return const PreflightCheck(
+        id: 'disk_space',
+        title: 'Backup storage',
+        detail:
+            'Disk-space preflight is not implemented on Windows in this build.',
+        status: PreflightStatus.info,
+      );
+    }
+    try {
+      final result = await Process.run('df', ['-Pk', cleanPath]);
+      if (result.exitCode != 0) {
+        return PreflightCheck(
+          id: 'disk_space',
+          title: 'Backup storage',
+          detail: 'Could not measure free space: ${result.stderr}',
+          status: PreflightStatus.warning,
+        );
+      }
+      final lines = result.stdout.toString().trim().split('\n');
+      if (lines.length < 2) {
+        throw StateError('Unexpected df output.');
+      }
+      final columns = lines.last.trim().split(RegExp(r'\s+'));
+      if (columns.length < 4) {
+        throw StateError('Unexpected df columns.');
+      }
+      final availableKilobytes = int.parse(columns[3]);
+      final availableBytes = availableKilobytes * 1024;
+      final availableGiB = availableBytes / (1024 * 1024 * 1024);
+      final detail =
+          '${availableGiB.toStringAsFixed(1)} GiB available near the backup folder.';
+      if (availableGiB < 1) {
+        return PreflightCheck(
+          id: 'disk_space',
+          title: 'Backup storage',
+          detail: detail,
+          status: PreflightStatus.fail,
+          nextAction: 'Free space or choose another backup folder.',
+        );
+      }
+      if (availableGiB < 10) {
+        return PreflightCheck(
+          id: 'disk_space',
+          title: 'Backup storage',
+          detail: detail,
+          status: PreflightStatus.warning,
+          nextAction:
+              'Large notebooks may need more space; consider a roomier backup volume.',
+        );
+      }
+      return PreflightCheck(
+        id: 'disk_space',
+        title: 'Backup storage',
+        detail: detail,
+        status: PreflightStatus.pass,
+      );
+    } catch (error) {
+      return PreflightCheck(
+        id: 'disk_space',
+        title: 'Backup storage',
+        detail: 'Disk-space check could not run: $error',
+        status: PreflightStatus.warning,
+      );
+    }
+  }
+
+  Future<PreflightCheck> _archiveExtractorPreflight() async {
+    final command = await _findArchiveExtractor();
+    if (command != null) {
+      return PreflightCheck(
+        id: 'archive_extractor',
+        title: 'Archive extraction',
+        detail: 'Archive extractor available: $command.',
+        status: PreflightStatus.pass,
+      );
+    }
+    return const PreflightCheck(
+      id: 'archive_extractor',
+      title: 'Archive extraction',
+      detail:
+          'No supported extractor was found. BenchVault needs bsdtar, tar, or 7z to unpack LabArchives .7z backups.',
+      status: PreflightStatus.fail,
+      nextAction: 'Install or bundle a supported archive extractor.',
+    );
+  }
+
+  Future<String?> _findArchiveExtractor() async {
+    for (final command in const ['bsdtar', 'tar', '7z']) {
+      try {
+        final result = Platform.isWindows
+            ? await Process.run('where', [command])
+            : await Process.run('which', [command]);
+        if (result.exitCode == 0) {
+          return command;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  PreflightCheck _readOnlyContractPreflight() {
+    try {
+      LabArchivesClient.assertReadOnlyElnOperation(
+        apiClass: 'users',
+        method: 'user_access_info',
+        paramKeys: const ['login_or_email', 'password'],
+      );
+      LabArchivesClient.assertReadOnlyElnOperation(
+        apiClass: 'notebooks',
+        method: 'notebook_backup',
+        paramKeys: const ['uid', 'nbid', 'json'],
+      );
+      final refusedWrite = !LabArchivesClient.isReadOnlyElnOperation(
+        'entries',
+        'add_entry',
+      );
+      if (!refusedWrite) {
+        throw StateError('Mutable endpoint unexpectedly allowlisted.');
+      }
+      return const PreflightCheck(
+        id: 'read_only_contract',
+        title: 'Read-only LabArchives contract',
+        detail:
+            'Production access is limited to login, user-access lookup, and notebook backup download.',
+        status: PreflightStatus.pass,
+      );
+    } catch (error) {
+      return PreflightCheck(
+        id: 'read_only_contract',
+        title: 'Read-only LabArchives contract',
+        detail: 'Read-only guard failed: $error',
+        status: PreflightStatus.fail,
+        nextAction: 'Stop and review the LabArchives client allowlist.',
+      );
+    }
+  }
+
+  PreflightCheck _openAiPreflight(OpenAiSearchSettings? settings) {
+    if (settings?.hasApiKey ?? false) {
+      return PreflightCheck(
+        id: 'openai_search',
+        title: 'Notebook search',
+        detail: 'OpenAI search is configured with model ${settings!.model}.',
+        status: PreflightStatus.pass,
+      );
+    }
+    return const PreflightCheck(
+      id: 'openai_search',
+      title: 'Notebook search',
+      detail:
+          'OpenAI search is not configured. Local fuzzy search remains available.',
+      status: PreflightStatus.info,
+    );
+  }
+
+  PreflightCheck _schedulePreflight(BackupSchedule schedule) {
+    if (schedule.enabled) {
+      final next = schedule.nextRunAfter(DateTime.now());
+      return PreflightCheck(
+        id: 'automatic_backup',
+        title: 'Automatic backup',
+        detail: 'Enabled. Next run: ${next.toLocal()}.',
+        status: PreflightStatus.pass,
+      );
+    }
+    return const PreflightCheck(
+      id: 'automatic_backup',
+      title: 'Automatic backup',
+      detail: 'Not enabled. Manual backup is available.',
+      status: PreflightStatus.info,
+    );
   }
 
   Future<void> saveOpenAiSearchSettings(OpenAiSearchSettings settings) async {
@@ -262,6 +563,33 @@ class BackupService {
     return records;
   }
 
+  Future<BackupRunManifest?> loadLatestBackupRun() async {
+    final runs = <BackupRunManifest>[];
+    for (final backupRoot in await _backupSearchDirs()) {
+      final runsDir = Directory(_join(backupRoot.path, 'runs'));
+      if (!await runsDir.exists()) {
+        continue;
+      }
+      await for (final entity in runsDir.list(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.json')) {
+          continue;
+        }
+        try {
+          final json =
+              jsonDecode(await entity.readAsString()) as Map<String, Object?>;
+          runs.add(BackupRunManifest.fromJson(json));
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+    if (runs.isEmpty) {
+      return null;
+    }
+    runs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return runs.first;
+  }
+
   Future<RenderNotebook> loadRenderNotebook(BackupRecord record) async {
     final file = await _resolveBackupFile(record.renderPath);
     final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
@@ -400,6 +728,244 @@ class BackupService {
         error: error.toString(),
       );
     }
+  }
+
+  Future<BackupAuditExport> exportAuditSummary(BackupRecord record) async {
+    final check = await verifyBackupIntegrity(record);
+    final renderFile = await _resolveBackupFile(record.renderPath);
+    final runDir = renderFile.parent;
+    final backupRoot = await _backupRootForFile(renderFile);
+    final auditDir = Directory(_join(runDir.path, 'audit'));
+    await auditDir.create(recursive: true);
+
+    final generatedAt = DateTime.now().toUtc();
+    final jsonFile = File(_join(auditDir.path, 'backup_audit_summary.json'));
+    final markdownFile = File(_join(auditDir.path, 'backup_audit_summary.md'));
+    final csvFile = File(_join(auditDir.path, 'integrity_files.csv'));
+    final hashAnchorFile = File(
+      _join(auditDir.path, 'external_hash_anchor.txt'),
+    );
+    final jsonPath = _relativeTo(backupRoot.path, jsonFile.path);
+    final markdownPath = _relativeTo(backupRoot.path, markdownFile.path);
+    final csvPath = _relativeTo(backupRoot.path, csvFile.path);
+    final hashAnchorPath = _relativeTo(backupRoot.path, hashAnchorFile.path);
+    final manifestEntries = await _integrityManifestEntries(record);
+
+    final summary = <String, Object?>{
+      'version': 1,
+      'kind': 'benchvault.backup.audit',
+      'generatedAt': generatedAt.toIso8601String(),
+      'note':
+          'BenchVault audit summaries are local tamper-evidence aids. They do not replace institutional records policy, chain-of-custody review, or legal certification.',
+      'backup': record.toJson(),
+      'integrityCheck': check.toJson(),
+      'exports': {
+        'markdownPath': markdownPath,
+        'jsonPath': jsonPath,
+        'csvPath': csvPath,
+        'hashAnchorPath': hashAnchorPath,
+      },
+      'integrityFiles': manifestEntries,
+    };
+    await jsonFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(summary),
+    );
+    await markdownFile.writeAsString(
+      _auditMarkdown(
+        record: record,
+        check: check,
+        generatedAt: generatedAt,
+        jsonPath: jsonPath,
+        csvPath: csvPath,
+        hashAnchorPath: hashAnchorPath,
+        manifestEntries: manifestEntries,
+      ),
+    );
+    await csvFile.writeAsString(_auditCsv(manifestEntries));
+    await hashAnchorFile.writeAsString(
+      _externalHashAnchor(
+        record: record,
+        check: check,
+        generatedAt: generatedAt,
+      ),
+    );
+
+    return BackupAuditExport(
+      generatedAt: generatedAt,
+      markdownPath: markdownPath,
+      jsonPath: jsonPath,
+      csvPath: csvPath,
+      hashAnchorPath: hashAnchorPath,
+      integrityCheck: check,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> _integrityManifestEntries(
+    BackupRecord record,
+  ) async {
+    final manifestPath = record.integrityManifestPath;
+    if (manifestPath == null || manifestPath.trim().isEmpty) {
+      return const [];
+    }
+    final manifestFile = await _resolveBackupFile(manifestPath);
+    if (!await manifestFile.exists()) {
+      return const [];
+    }
+    final manifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, Object?>;
+    return (manifest['files'] as List<Object?>? ?? const [])
+        .whereType<Map<String, Object?>>()
+        .toList();
+  }
+
+  String _auditMarkdown({
+    required BackupRecord record,
+    required BackupIntegrityCheck check,
+    required DateTime generatedAt,
+    required String jsonPath,
+    required String csvPath,
+    required String hashAnchorPath,
+    required List<Map<String, Object?>> manifestEntries,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('# BenchVault Backup Audit Summary')
+      ..writeln()
+      ..writeln('- Notebook: `${record.notebookName}`')
+      ..writeln('- Backup ID: `${record.id}`')
+      ..writeln('- Backup created: `${record.createdAt.toIso8601String()}`')
+      ..writeln('- Audit generated: `${generatedAt.toIso8601String()}`')
+      ..writeln('- Integrity status: `${check.statusTitle}`')
+      ..writeln('- Integrity summary: ${check.summary}')
+      ..writeln('- Faithful archive: `${record.archivePath}`')
+      ..writeln('- Viewer JSON: `${record.renderPath}`');
+    if (record.readablePath != null) {
+      buffer.writeln('- Readable copy: `${record.readablePath}`');
+    }
+    if (record.searchIndexPath != null) {
+      buffer.writeln('- Search index: `${record.searchIndexPath}`');
+    }
+    if (record.integrityManifestPath != null) {
+      buffer.writeln('- Integrity manifest: `${record.integrityManifestPath}`');
+    }
+    buffer
+      ..writeln('- Machine-readable JSON: `$jsonPath`')
+      ..writeln('- Integrity file CSV: `$csvPath`')
+      ..writeln('- External hash anchor: `$hashAnchorPath`')
+      ..writeln()
+      ..writeln('## Original Attachment Verification');
+    final verification = record.contentVerification;
+    if (verification == null) {
+      buffer.writeln(
+        'This backup record does not include original attachment verification metadata.',
+      );
+    } else {
+      buffer
+        ..writeln('- Summary: `${verification.summary}`')
+        ..writeln('- Complete: `${verification.isComplete}`')
+        ..writeln(
+          '- Expected originals: `${verification.expectedOriginalAttachmentCount}`',
+        )
+        ..writeln(
+          '- Verified originals: `${verification.verifiedOriginalAttachmentCount}`',
+        )
+        ..writeln(
+          '- Expected original bytes: `${verification.expectedOriginalAttachmentBytes}`',
+        )
+        ..writeln(
+          '- Verified original bytes: `${verification.verifiedOriginalAttachmentBytes}`',
+        );
+    }
+    buffer
+      ..writeln()
+      ..writeln('## Integrity Check')
+      ..writeln()
+      ..writeln('- Manifest present: `${check.hasManifest}`')
+      ..writeln('- Local seal present: `${check.hasLocalSeal}`')
+      ..writeln('- Manifest matches local seal: `${check.manifestMatchesSeal}`')
+      ..writeln('- Checked files: `${check.checkedFileCount}`')
+      ..writeln('- Checked bytes: `${check.checkedBytes}`');
+    if (check.manifestSha256 != null) {
+      buffer.writeln('- Manifest SHA-256: `${check.manifestSha256}`');
+    }
+    if (check.sealedManifestSha256 != null) {
+      buffer.writeln(
+        '- Sealed manifest SHA-256: `${check.sealedManifestSha256}`',
+      );
+    }
+    _auditPathSection(buffer, 'Changed files', check.changedFiles);
+    _auditPathSection(buffer, 'Missing files', check.missingFiles);
+    _auditPathSection(buffer, 'Unexpected files', check.extraFiles);
+    buffer
+      ..writeln()
+      ..writeln('## Protected Files')
+      ..writeln()
+      ..writeln(
+        'Protected files listed in the CSV are the files hashed by the integrity manifest at backup time.',
+      )
+      ..writeln()
+      ..writeln('## Important Limit')
+      ..writeln()
+      ..writeln(
+        'This audit summary is local tamper-evidence, not true immutability or legal certification by itself.',
+      );
+    return buffer.toString();
+  }
+
+  void _auditPathSection(
+    StringBuffer buffer,
+    String title,
+    List<String> paths,
+  ) {
+    buffer
+      ..writeln()
+      ..writeln('### $title')
+      ..writeln();
+    if (paths.isEmpty) {
+      buffer.writeln('None.');
+      return;
+    }
+    for (final path in paths) {
+      buffer.writeln('- `$path`');
+    }
+  }
+
+  String _auditCsv(List<Map<String, Object?>> entries) {
+    final buffer = StringBuffer()..writeln('path,bytes,sha256,modifiedAt');
+    for (final entry in entries) {
+      buffer.writeln(
+        [
+          entry['path'] ?? '',
+          entry['bytes'] ?? '',
+          entry['sha256'] ?? '',
+          entry['modifiedAt'] ?? '',
+        ].map((value) => _csv(value.toString())).join(','),
+      );
+    }
+    return buffer.toString();
+  }
+
+  String _externalHashAnchor({
+    required BackupRecord record,
+    required BackupIntegrityCheck check,
+    required DateTime generatedAt,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('BenchVault external hash anchor')
+      ..writeln('Generated at: ${generatedAt.toIso8601String()}')
+      ..writeln('Notebook: ${record.notebookName}')
+      ..writeln('Backup ID: ${record.id}')
+      ..writeln('Backup created: ${record.createdAt.toIso8601String()}')
+      ..writeln('Integrity status: ${check.statusTitle}')
+      ..writeln('Integrity manifest: ${check.manifestPath ?? 'missing'}')
+      ..writeln('Manifest SHA-256: ${check.manifestSha256 ?? 'unavailable'}')
+      ..writeln(
+        'Sealed manifest SHA-256: ${check.sealedManifestSha256 ?? 'unavailable'}',
+      )
+      ..writeln()
+      ..writeln(
+        'Store this text or just the manifest SHA-256 in an institutional records system, WORM storage, or another append-only location to strengthen later originality review.',
+      );
+    return buffer.toString();
   }
 
   Future<BackupRecord> ensureReadableCopy(BackupRecord record) async {
@@ -551,10 +1117,17 @@ class BackupService {
     await runDir.create(recursive: true);
 
     final records = <BackupRecord>[];
+    final outcomes = <BackupNotebookOutcome>[];
+    final runLog = <String>[];
+    void emit(String message) {
+      runLog.add(message);
+      onProgress?.call(message);
+    }
+
     for (final notebook in notebooks) {
       Directory? notebookDir;
       try {
-        onProgress?.call('Downloading ${notebook.name}');
+        emit('Downloading ${notebook.name}');
         notebookDir = Directory(
           _join(
             backupRoot.path,
@@ -573,17 +1146,17 @@ class BackupService {
           destination: archive,
         );
 
-        onProgress?.call('Extracting ${notebook.name}');
+        emit('Extracting ${notebook.name}');
         final extracted = Directory(_join(notebookDir.path, 'extracted'));
         await _extractArchive(archive, extracted);
 
-        onProgress?.call('Indexing ${notebook.name}');
+        emit('Indexing ${notebook.name}');
         final renderNotebook = await parser.parseExtractedBackup(
           extractedDir: extracted,
           archivePath: _relativeTo(backupRoot.path, archive.path),
           backupRootPath: backupRoot.path,
         );
-        onProgress?.call('Verifying full-size originals for ${notebook.name}');
+        emit('Verifying full-size originals for ${notebook.name}');
         final originalsManifest = File(
           _join(notebookDir.path, 'original_files_manifest.json'),
         );
@@ -614,7 +1187,7 @@ class BackupService {
           pageCount: renderNotebook.nodes.where((node) => node.isPage).length,
           contentVerification: contentVerification,
         );
-        onProgress?.call('Writing readable search copy for ${notebook.name}');
+        emit('Writing readable search copy for ${notebook.name}');
         final readable = await ReadableNotebookExporter().write(
           record: record,
           notebook: renderNotebook,
@@ -625,15 +1198,40 @@ class BackupService {
           readablePath: readable.markdownPath,
           searchIndexPath: readable.searchIndexPath,
         );
-        onProgress?.call('Sealing integrity manifest for ${notebook.name}');
+        emit('Sealing integrity manifest for ${notebook.name}');
         record = await sealBackupIntegrity(record);
         records.add(record);
-        onProgress?.call('Finished ${notebook.name}');
+        outcomes.add(
+          BackupNotebookOutcome(
+            notebookName: record.notebookName,
+            status: BackupOutcomeStatus.success,
+            category: BackupFailureCategory.none,
+            message: 'Backed up successfully.',
+            backupRecordId: record.id,
+            pageCount: record.pageCount,
+            archiveBytes: contentVerification.archiveBytes,
+            verifiedOriginalAttachmentCount:
+                contentVerification.verifiedOriginalAttachmentCount,
+            expectedOriginalAttachmentCount:
+                contentVerification.expectedOriginalAttachmentCount,
+          ),
+        );
+        emit('Finished ${notebook.name}');
       } catch (error) {
         if (notebookDir != null && await notebookDir.exists()) {
           await notebookDir.delete(recursive: true);
         }
-        onProgress?.call('Skipped ${notebook.name}: ${_skipReason(error)}');
+        final failure = _classifyBackupError(error);
+        outcomes.add(
+          BackupNotebookOutcome(
+            notebookName: notebook.name,
+            status: BackupOutcomeStatus.skipped,
+            category: failure.category,
+            message: failure.message,
+            nextAction: failure.nextAction,
+          ),
+        );
+        emit('Skipped ${notebook.name}: ${failure.message}');
       }
       await Future<void>.delayed(const Duration(seconds: 1));
     }
@@ -642,6 +1240,10 @@ class BackupService {
       session: session,
       records: records,
       createdAt: now,
+      completedAt: DateTime.now().toUtc(),
+      totalNotebookCount: notebooks.length,
+      outcomes: outcomes,
+      log: runLog,
     );
     if (records.isEmpty && notebooks.isNotEmpty) {
       throw StateError(
@@ -651,13 +1253,70 @@ class BackupService {
     return records;
   }
 
-  String _skipReason(Object error) {
+  _BackupFailure _classifyBackupError(Object error) {
     final message = error.toString();
+    final lower = message.toLowerCase();
     if (message.contains('code 4547') ||
-        message.toLowerCase().contains('does not have rights')) {
-      return 'full-size backup is owner-only. At NIH/NICHD, lab notebook owners are lab chiefs/PIs; ask the PI owner to run the backup.';
+        lower.contains('does not have rights')) {
+      return const _BackupFailure(
+        category: BackupFailureCategory.notOwner,
+        message: 'Full-size backup is owner-only for this notebook.',
+        nextAction:
+            'At NIH/NICHD, ask the lab chief or PI owner to run the backup.',
+      );
     }
-    return message;
+    if (lower.contains('authorization failed') ||
+        lower.contains('missing local credentials') ||
+        lower.contains('missing labarchives uid') ||
+        lower.contains('auth')) {
+      return _BackupFailure(
+        category: BackupFailureCategory.authorization,
+        message: _oneLine(message),
+        nextAction: 'Reconnect LabArchives credentials and try again.',
+      );
+    }
+    if (lower.contains('could not extract') ||
+        lower.contains('bsdtar') ||
+        lower.contains('7z')) {
+      return _BackupFailure(
+        category: BackupFailureCategory.extraction,
+        message: _oneLine(message),
+        nextAction: 'Install or bundle a supported archive extractor.',
+      );
+    }
+    if (lower.contains('original attachment verification failed')) {
+      return _BackupFailure(
+        category: BackupFailureCategory.verification,
+        message: _oneLine(message),
+        nextAction:
+            'Keep the failed context in the log, then retry or review whether LabArchives omitted originals.',
+      );
+    }
+    if (lower.contains('permission denied') ||
+        lower.contains('no space') ||
+        lower.contains('disk') ||
+        lower.contains('not writable')) {
+      return _BackupFailure(
+        category: BackupFailureCategory.storage,
+        message: _oneLine(message),
+        nextAction: 'Choose a writable backup folder with enough free space.',
+      );
+    }
+    if (lower.contains('socket') ||
+        lower.contains('network') ||
+        lower.contains('timed out') ||
+        lower.contains('connection')) {
+      return _BackupFailure(
+        category: BackupFailureCategory.network,
+        message: _oneLine(message),
+        nextAction: 'Check the network connection and try again.',
+      );
+    }
+    return _BackupFailure(
+      category: BackupFailureCategory.unknown,
+      message: _oneLine(message),
+      nextAction: 'Review the local run log and retry when ready.',
+    );
   }
 
   String _verificationFailureSummary(BackupContentVerification verification) {
@@ -737,6 +1396,9 @@ class BackupService {
           ? ''
           : entity.uri.pathSegments.last;
       if (name == 'integrity_manifest.json') {
+        continue;
+      }
+      if (entity.path.split(Platform.pathSeparator).contains('audit')) {
         continue;
       }
       paths.add(_relativeTo(backupRootPath, entity.path));
@@ -1085,15 +1747,23 @@ class BackupService {
     required String session,
     required List<BackupRecord> records,
     required DateTime createdAt,
+    required DateTime completedAt,
+    required int totalNotebookCount,
+    required List<BackupNotebookOutcome> outcomes,
+    required List<String> log,
   }) async {
     final manifest = File(_join(runDir.path, '$session.json'));
+    final run = BackupRunManifest(
+      id: session,
+      createdAt: createdAt,
+      completedAt: completedAt,
+      totalNotebookCount: totalNotebookCount,
+      outcomes: outcomes,
+      records: records,
+      log: log,
+    );
     await manifest.writeAsString(
-      const JsonEncoder.withIndent('  ').convert({
-        'id': session,
-        'createdAt': createdAt.toIso8601String(),
-        'notebookCount': records.length,
-        'records': records.map((record) => record.toJson()).toList(),
-      }),
+      const JsonEncoder.withIndent('  ').convert(run.toJson()),
     );
   }
 
@@ -1329,4 +1999,13 @@ String _join(
     }
   }
   return parts.join(Platform.pathSeparator);
+}
+
+String _oneLine(String value) {
+  return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+String _csv(String value) {
+  final escaped = value.replaceAll('"', '""');
+  return '"$escaped"';
 }

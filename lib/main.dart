@@ -9,6 +9,7 @@ import 'src/backup_models.dart';
 import 'src/backup_service.dart';
 import 'src/attachment_format_support.dart';
 import 'src/notebook_search_service.dart';
+import 'src/preflight_models.dart';
 import 'src/search_models.dart';
 import 'src/setup_models.dart';
 
@@ -20,6 +21,7 @@ const _nihGoldLight = Color(0xfffff5c2);
 const _nihCoolAccent = Color(0xff1dc2ae);
 const _nihSurface = Color(0xfffbfcfd);
 const _nihSuccess = Color(0xff0f6460);
+const _nihWarning = Color(0xff8a5a00);
 
 void main() {
   runApp(const BenchVaultApp());
@@ -89,10 +91,13 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
   Future<void>? _loader;
   List<NotebookSummary> _notebooks = const [];
   List<BackupRecord> _backups = const [];
+  BackupRunManifest? _latestRun;
   BackupRecord? _selectedBackup;
   RenderNotebook? _selectedNotebook;
   RenderNode? _selectedNode;
+  NotebookSearchHit? _selectedSearchHit;
   BackupIntegrityCheck? _integrityCheck;
+  BackupPreflightReport? _preflightReport;
   LocalSetupStatus? _setupStatus;
   BackupSchedule _schedule = BackupSchedule.disabled();
   String _backupRootPath = '';
@@ -102,12 +107,17 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
   final List<String> _log = <String>[];
   final _searchController = TextEditingController();
   NotebookSearchResult? _searchResult;
+  NotebookSearchScope _searchScope = NotebookSearchScope.all;
+  bool _searchExactPhrase = false;
+  bool _searchVerifiedOnly = false;
   bool _openAiSearchReady = false;
   bool _busy = false;
   bool _setupBusy = false;
   bool _restoreBusy = false;
   bool _searchBusy = false;
   bool _integrityBusy = false;
+  bool _preflightBusy = false;
+  bool _auditBusy = false;
 
   @override
   void initState() {
@@ -137,12 +147,16 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
           ? await _service.loadNotebookSummaries()
           : <NotebookSummary>[];
       final backups = await _service.loadBackups();
+      final latestRun = await _service.loadLatestBackupRun();
+      final preflightReport = await _service.runPreflight();
       setState(() {
         _setupStatus = setupStatus;
+        _preflightReport = preflightReport;
         _schedule = backupSettings.schedule;
         _backupRootPath = backupSettings.backupRootPath;
         _notebooks = notebooks;
         _backups = backups;
+        _latestRun = latestRun;
         _selectedBackup = backups.isEmpty ? null : backups.first;
         _openAiSearchReady = openAiSettings?.hasApiKey ?? false;
         _status = !setupStatus.isReady
@@ -165,6 +179,8 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
           hasNotebookIndex: false,
           notebookCount: 0,
         );
+        _preflightReport = null;
+        _latestRun = null;
       });
     }
   }
@@ -214,6 +230,32 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         ),
       ];
       _backups = [backup];
+      _latestRun = BackupRunManifest(
+        id: 'demo_20260514_090000Z',
+        createdAt: DateTime.utc(2026, 5, 14, 9),
+        completedAt: DateTime.utc(2026, 5, 14, 9, 4),
+        totalNotebookCount: 1,
+        records: [backup],
+        outcomes: const [
+          BackupNotebookOutcome(
+            notebookName: 'Demo Immunology Notebook',
+            status: BackupOutcomeStatus.success,
+            category: BackupFailureCategory.none,
+            message: 'Backed up successfully.',
+            backupRecordId: 'demo_20260514_090000Z',
+            pageCount: 2,
+            archiveBytes: 212209,
+            verifiedOriginalAttachmentCount: 15,
+            expectedOriginalAttachmentCount: 15,
+          ),
+        ],
+        log: const [
+          'Finished Demo Immunology Notebook',
+          'Verifying full-size originals for Demo Immunology Notebook',
+          'Indexing Demo Immunology Notebook',
+          'Extracting Demo Immunology Notebook',
+        ],
+      );
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = _demoSearchMode
@@ -222,6 +264,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
               orElse: () => notebook.firstPage!,
             )
           : notebook.firstPage;
+      _selectedSearchHit = null;
       _integrityCheck = BackupIntegrityCheck(
         backupId: 'demo_20260514_090000Z',
         checkedAt: DateTime.utc(2026, 5, 14, 9),
@@ -230,6 +273,41 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         manifestPath: null,
         checkedFileCount: 0,
         checkedBytes: 0,
+      );
+      _preflightReport = BackupPreflightReport(
+        generatedAt: DateTime.utc(2026, 5, 14, 9),
+        checks: const [
+          PreflightCheck(
+            id: 'credentials',
+            title: 'LabArchives authorization',
+            detail: 'Demo credentials and UID are present.',
+            status: PreflightStatus.pass,
+          ),
+          PreflightCheck(
+            id: 'notebook_index',
+            title: 'Notebook list',
+            detail: '1 demo notebook available for backup attempts.',
+            status: PreflightStatus.pass,
+          ),
+          PreflightCheck(
+            id: 'backup_folder',
+            title: 'Backup folder',
+            detail: 'Demo backup folder is writable.',
+            status: PreflightStatus.pass,
+          ),
+          PreflightCheck(
+            id: 'archive_extractor',
+            title: 'Archive extraction',
+            detail: 'Demo extractor available.',
+            status: PreflightStatus.pass,
+          ),
+          PreflightCheck(
+            id: 'read_only_contract',
+            title: 'Read-only LabArchives contract',
+            detail: 'Production write endpoints are not allowlisted.',
+            status: PreflightStatus.pass,
+          ),
+        ],
       );
       _openAiSearchReady = _demoSearchMode;
       if (_demoSearchMode) {
@@ -248,6 +326,29 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _status = 'Demo mode: full-size original backup verified.';
       _rescheduleAutomaticBackup();
     });
+  }
+
+  Future<BackupPreflightReport?> _refreshPreflight() async {
+    if (_demoMode) {
+      return _preflightReport;
+    }
+    setState(() => _preflightBusy = true);
+    try {
+      final report = await _service.runPreflight();
+      if (mounted) {
+        setState(() => _preflightReport = report);
+      }
+      return report;
+    } catch (error) {
+      if (mounted) {
+        setState(() => _status = 'Backup readiness check failed: $error');
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _preflightBusy = false);
+      }
+    }
   }
 
   Future<void> _selectBackup(BackupRecord backup) async {
@@ -270,6 +371,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = notebook?.firstPage;
+      _selectedSearchHit = null;
       _integrityCheck = integrityCheck;
       _integrityBusy = false;
       if (loadError != null) {
@@ -346,6 +448,83 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
     );
   }
 
+  Future<void> _exportAuditSummary() async {
+    final backup = _selectedBackup;
+    if (backup == null || _auditBusy) {
+      return;
+    }
+    setState(() {
+      _auditBusy = true;
+      _status = 'Exporting backup audit summary...';
+    });
+    try {
+      final audit = await _service.exportAuditSummary(backup);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _integrityCheck = audit.integrityCheck;
+        _status = 'Audit summary exported.';
+      });
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: Icon(
+            audit.integrityCheck.isVerified
+                ? Icons.verified_outlined
+                : Icons.warning_amber_outlined,
+            color: audit.integrityCheck.isVerified
+                ? _nihSuccess
+                : Theme.of(context).colorScheme.error,
+          ),
+          title: const Text('Audit Summary Exported'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(audit.integrityCheck.summary),
+                const SizedBox(height: 12),
+                _IntegrityDetailLine(
+                  label: 'Markdown summary',
+                  value: audit.markdownPath,
+                ),
+                _IntegrityDetailLine(
+                  label: 'Machine-readable JSON',
+                  value: audit.jsonPath,
+                ),
+                _IntegrityDetailLine(
+                  label: 'Integrity file CSV',
+                  value: audit.csvPath,
+                ),
+                _IntegrityDetailLine(
+                  label: 'External hash anchor',
+                  value: audit.hashAnchorPath,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _status = 'Audit export failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _auditBusy = false);
+      }
+    }
+  }
+
   Future<void> _selectSearchHit(NotebookSearchHit hit) async {
     BackupRecord? backup;
     for (final candidate in _backups) {
@@ -373,6 +552,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = node ?? notebook.firstPage;
+      _selectedSearchHit = hit;
       _integrityCheck = integrityCheck;
     });
     if (integrityCheck.needsWarning) {
@@ -401,7 +581,14 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _status = 'Searching backed-up notebooks...';
     });
     try {
-      final result = await NotebookSearchService(_service).search(query);
+      final result = await NotebookSearchService(_service).search(
+        query,
+        filters: NotebookSearchFilters(
+          scope: _searchScope,
+          exactPhrase: _searchExactPhrase,
+          verifiedOnly: _searchVerifiedOnly,
+        ),
+      );
       if (!mounted) {
         return;
       }
@@ -450,11 +637,37 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
     }
     setState(() {
       _busy = true;
-      _log.clear();
-      _status =
-          '${automatic ? 'Automatic backup' : 'Backing up'} ${_notebooks.length} notebooks...';
+      _preflightBusy = true;
+      _status = 'Checking backup readiness...';
     });
     try {
+      final preflight = _demoMode
+          ? _preflightReport
+          : await _service.runPreflight();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (preflight != null) {
+          _preflightReport = preflight;
+        }
+        _preflightBusy = false;
+      });
+      if (preflight != null && !preflight.canRunBackup) {
+        final firstBlocker = preflight.blockingChecks.first;
+        setState(() {
+          _busy = false;
+          _status =
+              'Backup blocked: ${firstBlocker.title}. ${firstBlocker.nextAction ?? firstBlocker.detail}';
+        });
+        _rescheduleAutomaticBackup();
+        return;
+      }
+      setState(() {
+        _log.clear();
+        _status =
+            '${automatic ? 'Automatic backup' : 'Backing up'} ${_notebooks.length} notebooks...';
+      });
       final records = await _service.backupAllNotebooks(
         onProgress: (message) {
           if (mounted) {
@@ -463,17 +676,20 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         },
       );
       final backups = await _service.loadBackups();
+      final latestRun = await _service.loadLatestBackupRun();
       if (!mounted) {
         return;
       }
       setState(() {
         _backups = backups;
+        _latestRun = latestRun;
         _status =
             '${automatic ? 'Automatic backup complete' : 'Backup complete'}: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
       });
       if (records.isNotEmpty) {
         await _selectBackup(records.first);
       }
+      await _refreshPreflight();
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -484,6 +700,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       if (mounted) {
         setState(() {
           _busy = false;
+          _preflightBusy = false;
           _rescheduleAutomaticBackup();
         });
       }
@@ -631,6 +848,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
           : 'Automatic backup disabled.';
       _rescheduleAutomaticBackup();
     });
+    await _refreshPreflight();
   }
 
   Future<void> _showSearchSettingsDialog() async {
@@ -657,6 +875,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
           ? 'OpenAI notebook search key saved locally.'
           : 'OpenAI notebook search key removed.';
     });
+    await _refreshPreflight();
   }
 
   void _rescheduleAutomaticBackup() {
@@ -751,7 +970,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.archive_outlined),
-                label: const Text('Backup All'),
+                label: const Text('Back Up Now'),
               ),
               const SizedBox(width: 12),
             ],
@@ -768,14 +987,37 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                     _searchBusy ||
                     _integrityBusy,
               ),
+              const _ReadOnlyContractBanner(),
+              if (_preflightReport != null && (_setupStatus?.isReady ?? false))
+                _PreflightPanel(
+                  report: _preflightReport!,
+                  busy: _preflightBusy,
+                  onRefresh: () => unawaited(_refreshPreflight()),
+                ),
               if (_setupStatus?.isReady ?? false)
-                _IntegrityBanner(check: _integrityCheck, busy: _integrityBusy),
+                _IntegrityBanner(
+                  check: _integrityCheck,
+                  busy: _integrityBusy,
+                  auditBusy: _auditBusy,
+                  onExportAudit: _selectedBackup == null
+                      ? null
+                      : _exportAuditSummary,
+                ),
               if (_setupStatus?.isReady ?? false)
                 _SearchPanel(
                   controller: _searchController,
                   result: _searchResult,
                   busy: _searchBusy,
                   openAiReady: _openAiSearchReady,
+                  scope: _searchScope,
+                  exactPhrase: _searchExactPhrase,
+                  verifiedOnly: _searchVerifiedOnly,
+                  onScopeChanged: (scope) =>
+                      setState(() => _searchScope = scope),
+                  onExactPhraseChanged: (value) =>
+                      setState(() => _searchExactPhrase = value),
+                  onVerifiedOnlyChanged: (value) =>
+                      setState(() => _searchVerifiedOnly = value),
                   onSearch: _runSearch,
                   onSettings: _showSearchSettingsDialog,
                   onSelectHit: _selectSearchHit,
@@ -794,10 +1036,13 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                     if (constraints.maxWidth < 840) {
                       return _NarrowLayout(
                         service: _service,
+                        notebooks: _notebooks,
                         backups: _backups,
+                        latestRun: _latestRun,
                         selectedBackup: _selectedBackup,
                         notebook: _selectedNotebook,
                         selectedNode: _selectedNode,
+                        selectedSearchHit: _selectedSearchHit,
                         log: _log,
                         onSelectBackup: _selectBackup,
                         onSelectNode: (node) =>
@@ -807,10 +1052,13 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                     }
                     return _WideLayout(
                       service: _service,
+                      notebooks: _notebooks,
                       backups: _backups,
+                      latestRun: _latestRun,
                       selectedBackup: _selectedBackup,
                       notebook: _selectedNotebook,
                       selectedNode: _selectedNode,
+                      selectedSearchHit: _selectedSearchHit,
                       log: _log,
                       onSelectBackup: _selectBackup,
                       onSelectNode: (node) =>
@@ -1040,11 +1288,309 @@ class _StatusStrip extends StatelessWidget {
   }
 }
 
+class _ReadOnlyContractBanner extends StatelessWidget {
+  const _ReadOnlyContractBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      color: _nihBlueDark.withValues(alpha: 0.06),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, color: colors.primary, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: RichText(
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              text: TextSpan(
+                style: textTheme.bodySmall?.copyWith(color: colors.onSurface),
+                children: [
+                  TextSpan(
+                    text: 'LabArchives read-only mode: ',
+                    style: textTheme.labelLarge?.copyWith(
+                      color: colors.primary,
+                    ),
+                  ),
+                  const TextSpan(
+                    text:
+                        'only login, user-access lookup, and notebook-backup endpoints are allowlisted. No add, update, delete, upload, or restore-to-LabArchives requests are sent.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreflightPanel extends StatelessWidget {
+  const _PreflightPanel({
+    required this.report,
+    required this.busy,
+    required this.onRefresh,
+  });
+
+  final BackupPreflightReport report;
+  final bool busy;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final blockers = report.blockingChecks.toList();
+    final warnings = report.warningChecks.toList();
+    final color = blockers.isNotEmpty
+        ? colors.error
+        : warnings.isNotEmpty
+        ? _nihWarning
+        : _nihSuccess;
+    final icon = blockers.isNotEmpty
+        ? Icons.error_outline
+        : warnings.isNotEmpty
+        ? Icons.report_problem_outlined
+        : Icons.task_alt_outlined;
+    final focusCheck = blockers.isNotEmpty
+        ? blockers.first
+        : warnings.isNotEmpty
+        ? warnings.first
+        : report.checks.firstWhere(
+            (check) => check.status == PreflightStatus.pass,
+            orElse: () => report.checks.first,
+          );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: blockers.isNotEmpty ? 0.10 : 0.07),
+        border: Border(
+          bottom: BorderSide(color: color.withValues(alpha: 0.18)),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final leading = busy
+              ? SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
+                )
+              : Icon(icon, color: color, size: 21);
+          final summary = Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'Backup Center preflight',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelLarge?.copyWith(color: colors.onSurface),
+                    ),
+                    _StatusPill(label: report.summary, color: color),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  focusCheck.nextAction == null
+                      ? focusCheck.detail
+                      : '${focusCheck.detail} ${focusCheck.nextAction}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          );
+          final actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              IconButton(
+                tooltip: 'Refresh preflight',
+                onPressed: busy ? null : onRefresh,
+                icon: const Icon(Icons.refresh_outlined),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showDetails(context),
+                icon: const Icon(Icons.fact_check_outlined),
+                label: const Text('Details'),
+              ),
+            ],
+          );
+          final main = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [leading, const SizedBox(width: 10), summary],
+          );
+          if (constraints.maxWidth < 700) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                main,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              leading,
+              const SizedBox(width: 10),
+              summary,
+              const SizedBox(width: 10),
+              actions,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showDetails(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Backup Preflight'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final check in report.checks)
+                  _PreflightCheckRow(check: check),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreflightCheckRow extends StatelessWidget {
+  const _PreflightCheckRow({required this.check});
+
+  final PreflightCheck check;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _preflightColor(context, check.status);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(_preflightIcon(check.status), color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      check.title,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    _StatusPill(label: check.status.label, color: color),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(check.detail),
+                if (check.nextAction != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    check.nextAction!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+      ),
+    );
+  }
+}
+
+Color _preflightColor(BuildContext context, PreflightStatus status) {
+  return switch (status) {
+    PreflightStatus.pass => _nihSuccess,
+    PreflightStatus.warning => _nihWarning,
+    PreflightStatus.fail => Theme.of(context).colorScheme.error,
+    PreflightStatus.info => Theme.of(context).colorScheme.primary,
+  };
+}
+
+IconData _preflightIcon(PreflightStatus status) {
+  return switch (status) {
+    PreflightStatus.pass => Icons.check_circle_outline,
+    PreflightStatus.warning => Icons.report_problem_outlined,
+    PreflightStatus.fail => Icons.error_outline,
+    PreflightStatus.info => Icons.info_outline,
+  };
+}
+
 class _IntegrityBanner extends StatelessWidget {
-  const _IntegrityBanner({required this.check, required this.busy});
+  const _IntegrityBanner({
+    required this.check,
+    required this.busy,
+    required this.auditBusy,
+    required this.onExportAudit,
+  });
 
   final BackupIntegrityCheck? check;
   final bool busy;
+  final bool auditBusy;
+  final VoidCallback? onExportAudit;
 
   @override
   Widget build(BuildContext context) {
@@ -1072,6 +1618,8 @@ class _IntegrityBanner extends StatelessWidget {
       detail: result.summary,
       color: color,
       strong: result.needsWarning,
+      onDetails: () => _showIntegrityDetails(context, result),
+      onExportAudit: onExportAudit,
     );
   }
 
@@ -1082,6 +1630,8 @@ class _IntegrityBanner extends StatelessWidget {
     required String detail,
     required Color color,
     bool strong = false,
+    VoidCallback? onDetails,
+    VoidCallback? onExportAudit,
   }) {
     final textTheme = Theme.of(context).textTheme;
     return Container(
@@ -1110,6 +1660,143 @@ class _IntegrityBanner extends StatelessWidget {
               ],
             ),
           ),
+          if (onDetails != null) ...[
+            const SizedBox(width: 8),
+            if (onExportAudit != null)
+              TextButton.icon(
+                onPressed: auditBusy ? null : onExportAudit,
+                icon: auditBusy
+                    ? const SizedBox.square(
+                        dimension: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.ios_share_outlined, size: 16),
+                label: const Text('Audit'),
+              ),
+            IconButton(
+              tooltip: 'Integrity details',
+              onPressed: onDetails,
+              icon: const Icon(Icons.fact_check_outlined),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showIntegrityDetails(
+    BuildContext context,
+    BackupIntegrityCheck check,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(check.statusTitle),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(check.summary),
+                const SizedBox(height: 12),
+                _IntegrityDetailLine(
+                  label: 'Manifest',
+                  value: check.manifestPath ?? 'missing',
+                ),
+                _IntegrityDetailLine(
+                  label: 'Local seal',
+                  value: check.hasLocalSeal ? 'present' : 'missing',
+                ),
+                _IntegrityDetailLine(
+                  label: 'Checked files',
+                  value:
+                      '${check.checkedFileCount} files, ${check.checkedBytes} bytes',
+                ),
+                if (check.manifestSha256 != null)
+                  _IntegrityDetailLine(
+                    label: 'Manifest SHA-256',
+                    value: check.manifestSha256!,
+                  ),
+                if (check.sealedManifestSha256 != null)
+                  _IntegrityDetailLine(
+                    label: 'Sealed SHA-256',
+                    value: check.sealedManifestSha256!,
+                  ),
+                if (check.changedFiles.isNotEmpty)
+                  _IntegrityPathList(
+                    title: 'Changed files',
+                    paths: check.changedFiles,
+                  ),
+                if (check.missingFiles.isNotEmpty)
+                  _IntegrityPathList(
+                    title: 'Missing files',
+                    paths: check.missingFiles,
+                  ),
+                if (check.extraFiles.isNotEmpty)
+                  _IntegrityPathList(
+                    title: 'Unexpected files',
+                    paths: check.extraFiles,
+                  ),
+                if (check.error != null)
+                  _IntegrityDetailLine(label: 'Error', value: check.error!),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntegrityDetailLine extends StatelessWidget {
+  const _IntegrityDetailLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelLarge),
+          SelectableText(value),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntegrityPathList extends StatelessWidget {
+  const _IntegrityPathList({required this.title, required this.paths});
+
+  final String title;
+  final List<String> paths;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.labelLarge),
+          for (final path in paths.take(10)) SelectableText(path),
+          if (paths.length > 10)
+            Text(
+              '${paths.length - 10} more...',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
         ],
       ),
     );
@@ -1207,6 +1894,11 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                 ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Production access is read-only. BenchVault uses these credentials for LabArchives authorization and notebook backup downloads only; it does not write entries, attachments, comments, or restored data to LabArchives.',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 18),
               TextField(
@@ -1645,6 +2337,12 @@ class _SearchPanel extends StatelessWidget {
     required this.result,
     required this.busy,
     required this.openAiReady,
+    required this.scope,
+    required this.exactPhrase,
+    required this.verifiedOnly,
+    required this.onScopeChanged,
+    required this.onExactPhraseChanged,
+    required this.onVerifiedOnlyChanged,
     required this.onSearch,
     required this.onSettings,
     required this.onSelectHit,
@@ -1654,6 +2352,12 @@ class _SearchPanel extends StatelessWidget {
   final NotebookSearchResult? result;
   final bool busy;
   final bool openAiReady;
+  final NotebookSearchScope scope;
+  final bool exactPhrase;
+  final bool verifiedOnly;
+  final ValueChanged<NotebookSearchScope> onScopeChanged;
+  final ValueChanged<bool> onExactPhraseChanged;
+  final ValueChanged<bool> onVerifiedOnlyChanged;
   final VoidCallback onSearch;
   final VoidCallback onSettings;
   final ValueChanged<NotebookSearchHit> onSelectHit;
@@ -1721,6 +2425,55 @@ class _SearchPanel extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SegmentedButton<NotebookSearchScope>(
+                segments: const [
+                  ButtonSegment(
+                    value: NotebookSearchScope.all,
+                    icon: Icon(Icons.all_inbox_outlined, size: 16),
+                    label: Text('All'),
+                  ),
+                  ButtonSegment(
+                    value: NotebookSearchScope.pageText,
+                    icon: Icon(Icons.notes_outlined, size: 16),
+                    label: Text('Text'),
+                  ),
+                  ButtonSegment(
+                    value: NotebookSearchScope.attachments,
+                    icon: Icon(Icons.attach_file, size: 16),
+                    label: Text('Files'),
+                  ),
+                  ButtonSegment(
+                    value: NotebookSearchScope.comments,
+                    icon: Icon(Icons.comment_outlined, size: 16),
+                    label: Text('Comments'),
+                  ),
+                ],
+                selected: {scope},
+                onSelectionChanged: busy
+                    ? null
+                    : (selection) => onScopeChanged(selection.first),
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              ),
+              FilterChip(
+                avatar: const Icon(Icons.format_quote_outlined, size: 16),
+                label: const Text('Exact phrase'),
+                selected: exactPhrase,
+                onSelected: busy ? null : onExactPhraseChanged,
+              ),
+              FilterChip(
+                avatar: const Icon(Icons.verified_outlined, size: 16),
+                label: const Text('Verified only'),
+                selected: verifiedOnly,
+                onSelected: busy ? null : onVerifiedOnlyChanged,
+              ),
+            ],
+          ),
           if (searchResult != null) ...[
             const SizedBox(height: 10),
             Row(
@@ -1757,6 +2510,15 @@ class _SearchPanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
+            if (!searchResult.filters.isDefault) ...[
+              Text(
+                'Filters: ${searchResult.filters.summary}',
+                style: textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 5),
+            ],
             SelectableText(searchResult.answer),
             if (searchResult.hits.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1791,10 +2553,13 @@ class _SearchPanel extends StatelessWidget {
 class _WideLayout extends StatelessWidget {
   const _WideLayout({
     required this.service,
+    required this.notebooks,
     required this.backups,
+    required this.latestRun,
     required this.selectedBackup,
     required this.notebook,
     required this.selectedNode,
+    required this.selectedSearchHit,
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
@@ -1802,10 +2567,13 @@ class _WideLayout extends StatelessWidget {
   });
 
   final BackupService service;
+  final List<NotebookSummary> notebooks;
   final List<BackupRecord> backups;
+  final BackupRunManifest? latestRun;
   final BackupRecord? selectedBackup;
   final RenderNotebook? notebook;
   final RenderNode? selectedNode;
+  final NotebookSearchHit? selectedSearchHit;
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
@@ -1818,7 +2586,9 @@ class _WideLayout extends StatelessWidget {
         SizedBox(
           width: 300,
           child: _BackupList(
+            notebooks: notebooks,
             backups: backups,
+            latestRun: latestRun,
             selected: selectedBackup,
             onSelect: onSelectBackup,
             log: log,
@@ -1840,6 +2610,7 @@ class _WideLayout extends StatelessWidget {
             backup: selectedBackup,
             notebook: notebook,
             node: selectedNode,
+            selectedSearchHit: selectedSearchHit,
             onDownloadAttachment: onDownloadAttachment,
           ),
         ),
@@ -1851,10 +2622,13 @@ class _WideLayout extends StatelessWidget {
 class _NarrowLayout extends StatelessWidget {
   const _NarrowLayout({
     required this.service,
+    required this.notebooks,
     required this.backups,
+    required this.latestRun,
     required this.selectedBackup,
     required this.notebook,
     required this.selectedNode,
+    required this.selectedSearchHit,
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
@@ -1862,10 +2636,13 @@ class _NarrowLayout extends StatelessWidget {
   });
 
   final BackupService service;
+  final List<NotebookSummary> notebooks;
   final List<BackupRecord> backups;
+  final BackupRunManifest? latestRun;
   final BackupRecord? selectedBackup;
   final RenderNotebook? notebook;
   final RenderNode? selectedNode;
+  final NotebookSearchHit? selectedSearchHit;
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
@@ -1888,7 +2665,9 @@ class _NarrowLayout extends StatelessWidget {
             child: TabBarView(
               children: [
                 _BackupList(
+                  notebooks: notebooks,
                   backups: backups,
+                  latestRun: latestRun,
                   selected: selectedBackup,
                   onSelect: onSelectBackup,
                   log: log,
@@ -1903,6 +2682,7 @@ class _NarrowLayout extends StatelessWidget {
                   backup: selectedBackup,
                   notebook: notebook,
                   node: selectedNode,
+                  selectedSearchHit: selectedSearchHit,
                   onDownloadAttachment: onDownloadAttachment,
                 ),
               ],
@@ -1916,49 +2696,71 @@ class _NarrowLayout extends StatelessWidget {
 
 class _BackupList extends StatelessWidget {
   const _BackupList({
+    required this.notebooks,
     required this.backups,
+    required this.latestRun,
     required this.selected,
     required this.onSelect,
     required this.log,
   });
 
+  final List<NotebookSummary> notebooks;
   final List<BackupRecord> backups;
+  final BackupRunManifest? latestRun;
   final BackupRecord? selected;
   final ValueChanged<BackupRecord> onSelect;
   final List<String> log;
 
   @override
   Widget build(BuildContext context) {
+    final notebookStatuses = _buildNotebookBackupStatuses(
+      notebooks: notebooks,
+      backups: backups,
+      latestRun: latestRun,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PaneHeader(icon: Icons.inventory_2_outlined, title: 'Backups'),
+        if (latestRun != null) _BackupRunSummary(run: latestRun!),
         Expanded(
-          child: backups.isEmpty
+          child: backups.isEmpty && notebookStatuses.isEmpty
               ? const _EmptyState(
                   icon: Icons.archive_outlined,
                   text:
-                      'No local backups yet. Use Backup All to create JSON-viewable archives.',
+                      'No local backups yet. Use Back Up Now to create JSON-viewable archives.',
                 )
-              : ListView.builder(
-                  itemCount: backups.length,
-                  itemBuilder: (context, index) {
-                    final backup = backups[index];
-                    final isSelected = selected?.id == backup.id;
-                    return ListTile(
-                      selected: isSelected,
-                      leading: const Icon(Icons.folder_zip_outlined),
-                      title: Text(
-                        backup.notebookName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                  children: [
+                    if (notebookStatuses.isNotEmpty) ...[
+                      const _BackupSectionLabel('Notebook Status'),
+                      for (final status in notebookStatuses) ...[
+                        _NotebookBackupStatusCard(
+                          status: status,
+                          selectedRecordId: selected?.id,
+                          onSelect: onSelect,
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                    if (backups.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      const _BackupSectionLabel('Local Copies'),
+                      for (final backup in backups)
+                        _BackupRecordTile(
+                          backup: backup,
+                          selected: selected?.id == backup.id,
+                          onSelect: onSelect,
+                        ),
+                    ] else if (notebookStatuses.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'No local backup copies yet.',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      subtitle: Text(
-                        '${backup.createdAtLabel} · ${backup.pageCount} pages · ${backup.contentVerification?.summary ?? 'legacy archive'}',
-                      ),
-                      onTap: () => onSelect(backup),
-                    );
-                  },
+                    ],
+                  ],
                 ),
         ),
         if (log.isNotEmpty) ...[
@@ -1986,6 +2788,586 @@ class _BackupList extends StatelessWidget {
       ],
     );
   }
+}
+
+class _BackupSectionLabel extends StatelessWidget {
+  const _BackupSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+      child: Text(label, style: Theme.of(context).textTheme.labelLarge),
+    );
+  }
+}
+
+class _NotebookBackupStatusCard extends StatelessWidget {
+  const _NotebookBackupStatusCard({
+    required this.status,
+    required this.selectedRecordId,
+    required this.onSelect,
+  });
+
+  final _NotebookBackupStatus status;
+  final String? selectedRecordId;
+  final ValueChanged<BackupRecord> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = _notebookStatusTone(context, status);
+    final selected = status.latestRecord?.id == selectedRecordId;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+      side: BorderSide(
+        color: selected ? colors.primary : tone.withValues(alpha: 0.26),
+      ),
+    );
+    return Material(
+      color: selected
+          ? colors.primaryContainer.withValues(alpha: 0.42)
+          : colors.surface,
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: status.latestRecord == null
+            ? null
+            : () => onSelect(status.latestRecord!),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_notebookStatusIcon(status), color: tone, size: 19),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      status.notebookName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                status.detail,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _StatusPill(label: status.statusLabel, color: tone),
+                  if (status.backupCount > 0)
+                    _StatusPill(
+                      label:
+                          '${status.backupCount} local ${status.backupCount == 1 ? 'copy' : 'copies'}',
+                      color: colors.primary,
+                    ),
+                  if (status.latestOutcome != null &&
+                      !status.latestOutcome!.isSuccess)
+                    _StatusPill(
+                      label: status.latestOutcome!.category.label,
+                      color: _backupOutcomeTone(context, status.latestOutcome!),
+                    ),
+                  if (status.latestRecord?.contentVerification != null)
+                    _StatusPill(
+                      label: status.latestRecord!.contentVerification!.summary,
+                      color: _nihSuccess,
+                    )
+                  else if (status.latestRecord != null)
+                    _StatusPill(label: 'legacy archive', color: _nihWarning),
+                  if (status.latestRecord?.integrityManifestPath != null)
+                    _StatusPill(label: 'sealed', color: _nihSuccess),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupRecordTile extends StatelessWidget {
+  const _BackupRecordTile({
+    required this.backup,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final BackupRecord backup;
+  final bool selected;
+  final ValueChanged<BackupRecord> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      selected: selected,
+      selectedTileColor: Theme.of(
+        context,
+      ).colorScheme.primaryContainer.withValues(alpha: 0.35),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      leading: const Icon(Icons.folder_zip_outlined),
+      title: Text(
+        backup.notebookName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${backup.createdAtLabel} · ${backup.pageCount} pages · ${backup.contentVerification?.summary ?? 'legacy archive'}',
+      ),
+      onTap: () => onSelect(backup),
+    );
+  }
+}
+
+class _NotebookBackupStatus {
+  const _NotebookBackupStatus({
+    required this.notebookName,
+    required this.backupCount,
+    this.latestRecord,
+    this.latestOutcome,
+  });
+
+  final String notebookName;
+  final int backupCount;
+  final BackupRecord? latestRecord;
+  final BackupNotebookOutcome? latestOutcome;
+
+  String get statusLabel {
+    final outcome = latestOutcome;
+    if (outcome != null) {
+      if (outcome.isSuccess) {
+        return 'Protected latest run';
+      }
+      if (outcome.category == BackupFailureCategory.notOwner) {
+        return latestRecord == null ? 'Owner action needed' : 'Skipped latest';
+      }
+      return latestRecord == null ? 'Needs attention' : 'Previous copy only';
+    }
+    if (latestRecord != null) {
+      return 'Protected previously';
+    }
+    return 'Not backed up';
+  }
+
+  String get detail {
+    final outcome = latestOutcome;
+    final record = latestRecord;
+    if (outcome != null && !outcome.isSuccess) {
+      final prior = record == null
+          ? 'No local backup copy is available yet.'
+          : 'Latest local copy is from ${record.createdAtLabel}.';
+      return '${outcome.message} ${outcome.nextAction ?? prior}';
+    }
+    if (record != null) {
+      return 'Last backup ${record.createdAtLabel} · ${record.pageCount} pages · ${record.contentVerification?.summary ?? 'legacy archive'}.';
+    }
+    return 'This notebook is in the local notebook index, but no backup record has been created yet.';
+  }
+}
+
+List<_NotebookBackupStatus> _buildNotebookBackupStatuses({
+  required List<NotebookSummary> notebooks,
+  required List<BackupRecord> backups,
+  required BackupRunManifest? latestRun,
+}) {
+  final namesByKey = <String, String>{};
+  final orderedKeys = <String>[];
+
+  void remember(String name) {
+    final clean = name.trim().isEmpty ? 'Notebook' : name.trim();
+    final key = _notebookStatusKey(clean);
+    if (namesByKey.containsKey(key)) {
+      return;
+    }
+    namesByKey[key] = clean;
+    orderedKeys.add(key);
+  }
+
+  for (final notebook in notebooks) {
+    remember(notebook.name);
+  }
+  for (final outcome
+      in latestRun?.outcomes ?? const <BackupNotebookOutcome>[]) {
+    remember(outcome.notebookName);
+  }
+  for (final backup in backups) {
+    remember(backup.notebookName);
+  }
+
+  final recordsByKey = <String, List<BackupRecord>>{};
+  for (final backup in backups) {
+    final key = _notebookStatusKey(backup.notebookName);
+    recordsByKey.putIfAbsent(key, () => <BackupRecord>[]).add(backup);
+  }
+
+  final outcomesByKey = <String, BackupNotebookOutcome>{};
+  for (final outcome
+      in latestRun?.outcomes ?? const <BackupNotebookOutcome>[]) {
+    outcomesByKey[_notebookStatusKey(outcome.notebookName)] = outcome;
+  }
+
+  return [
+    for (final key in orderedKeys)
+      _NotebookBackupStatus(
+        notebookName: namesByKey[key]!,
+        backupCount: recordsByKey[key]?.length ?? 0,
+        latestRecord: recordsByKey[key]?.first,
+        latestOutcome: outcomesByKey[key],
+      ),
+  ];
+}
+
+String _notebookStatusKey(String value) => value.trim().toLowerCase();
+
+Color _notebookStatusTone(BuildContext context, _NotebookBackupStatus status) {
+  final outcome = status.latestOutcome;
+  if (outcome != null) {
+    if (outcome.isSuccess) {
+      return _nihSuccess;
+    }
+    if (status.latestRecord != null) {
+      return _nihWarning;
+    }
+    return _backupOutcomeTone(context, outcome);
+  }
+  if (status.latestRecord != null) {
+    return _nihSuccess;
+  }
+  return _nihWarning;
+}
+
+IconData _notebookStatusIcon(_NotebookBackupStatus status) {
+  final outcome = status.latestOutcome;
+  if (outcome != null) {
+    if (outcome.isSuccess) {
+      return Icons.verified_outlined;
+    }
+    if (outcome.category == BackupFailureCategory.notOwner) {
+      return Icons.admin_panel_settings_outlined;
+    }
+    return _backupOutcomeIcon(outcome);
+  }
+  if (status.latestRecord != null) {
+    return Icons.history_toggle_off_outlined;
+  }
+  return Icons.inventory_2_outlined;
+}
+
+class _BackupRunSummary extends StatelessWidget {
+  const _BackupRunSummary({required this.run});
+
+  final BackupRunManifest run;
+
+  void _showDetails(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => _BackupRunDetailsDialog(run: run),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = run.hasFailures ? _nihWarning : _nihSuccess;
+    final skipped = run.outcomes
+        .where((outcome) => !outcome.isSuccess)
+        .toList();
+    final focus = skipped.isNotEmpty ? skipped.first : null;
+    final visibleOutcomes = run.outcomes.take(3).toList(growable: false);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.07),
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                run.hasFailures
+                    ? Icons.report_problem_outlined
+                    : Icons.task_alt_outlined,
+                color: tone,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Last run · ${run.createdAtLabel}',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _showDetails(context),
+                icon: const Icon(Icons.fact_check_outlined, size: 16),
+                label: const Text('Details'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _StatusPill(label: run.summary, color: tone),
+              _StatusPill(
+                label: '${run.totalNotebookCount} notebooks checked',
+                color: colors.primary,
+              ),
+            ],
+          ),
+          if (focus != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${focus.notebookName}: ${focus.category.label}. ${focus.summary}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (visibleOutcomes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final outcome in visibleOutcomes) ...[
+              _BackupOutcomeRow(outcome: outcome, dense: true),
+              const SizedBox(height: 6),
+            ],
+            if (run.outcomes.length > visibleOutcomes.length)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => _showDetails(context),
+                  child: Text('Show all ${run.outcomes.length} outcomes'),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupRunDetailsDialog extends StatelessWidget {
+  const _BackupRunDetailsDialog({required this.run});
+
+  final BackupRunManifest run;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = run.hasFailures ? _nihWarning : _nihSuccess;
+    return AlertDialog(
+      title: const Text('Backup Run Details'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 560),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _StatusPill(label: run.summary, color: tone),
+                  _StatusPill(
+                    label: '${run.totalNotebookCount} notebooks checked',
+                    color: colors.primary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _IntegrityDetailLine(label: 'Started', value: run.createdAtLabel),
+              _IntegrityDetailLine(
+                label: 'Completed',
+                value: _formatDateTime(run.completedAt),
+              ),
+              _IntegrityDetailLine(label: 'Manifest ID', value: run.id),
+              const SizedBox(height: 14),
+              Text(
+                'Notebook Outcomes',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              if (run.outcomes.isEmpty)
+                Text(
+                  'No per-notebook outcomes were recorded for this legacy run.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              else
+                for (final outcome in run.outcomes) ...[
+                  _BackupOutcomeRow(outcome: outcome, dense: false),
+                  const SizedBox(height: 8),
+                ],
+              if (run.log.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text('Run Log', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest.withValues(
+                      alpha: 0.36,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: colors.outlineVariant),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final item in run.log.take(80))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: SelectableText(
+                              item,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        if (run.log.length > 80)
+                          Text(
+                            '${run.log.length - 80} older log lines omitted here.',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BackupOutcomeRow extends StatelessWidget {
+  const _BackupOutcomeRow({required this.outcome, required this.dense});
+
+  final BackupNotebookOutcome outcome;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = _backupOutcomeTone(context, outcome);
+    final detail = outcome.isSuccess
+        ? outcome.summary
+        : '${outcome.category.label}: ${outcome.summary}';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: dense ? 0.62 : 1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tone.withValues(alpha: 0.24)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: dense ? 8 : 10,
+          vertical: dense ? 7 : 9,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(_backupOutcomeIcon(outcome), color: tone, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    outcome.notebookName,
+                    maxLines: dense ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: dense ? 2 : 5,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  if (!dense &&
+                      outcome.nextAction != null &&
+                      outcome.nextAction!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      outcome.nextAction!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: tone,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _StatusPill(label: outcome.status.label, color: tone),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Color _backupOutcomeTone(BuildContext context, BackupNotebookOutcome outcome) {
+  if (outcome.isSuccess) {
+    return _nihSuccess;
+  }
+  return switch (outcome.category) {
+    BackupFailureCategory.notOwner => _nihWarning,
+    BackupFailureCategory.authorization => _nihWarning,
+    BackupFailureCategory.storage => Theme.of(context).colorScheme.error,
+    BackupFailureCategory.extraction => Theme.of(context).colorScheme.error,
+    BackupFailureCategory.verification => Theme.of(context).colorScheme.error,
+    BackupFailureCategory.network => _nihWarning,
+    BackupFailureCategory.setup => _nihWarning,
+    BackupFailureCategory.unknown => Theme.of(context).colorScheme.error,
+    BackupFailureCategory.none => _nihWarning,
+  };
+}
+
+IconData _backupOutcomeIcon(BackupNotebookOutcome outcome) {
+  if (outcome.isSuccess) {
+    return Icons.verified_outlined;
+  }
+  return switch (outcome.category) {
+    BackupFailureCategory.notOwner => Icons.admin_panel_settings_outlined,
+    BackupFailureCategory.authorization => Icons.lock_outline,
+    BackupFailureCategory.storage => Icons.storage_outlined,
+    BackupFailureCategory.extraction => Icons.inventory_2_outlined,
+    BackupFailureCategory.verification => Icons.gpp_maybe_outlined,
+    BackupFailureCategory.network => Icons.wifi_off_outlined,
+    BackupFailureCategory.setup => Icons.tune_outlined,
+    BackupFailureCategory.unknown => Icons.report_problem_outlined,
+    BackupFailureCategory.none => Icons.info_outline,
+  };
 }
 
 class _NotebookTree extends StatelessWidget {
@@ -2095,6 +3477,7 @@ class _EntryViewer extends StatelessWidget {
     required this.backup,
     required this.notebook,
     required this.node,
+    required this.selectedSearchHit,
     required this.onDownloadAttachment,
   });
 
@@ -2102,6 +3485,7 @@ class _EntryViewer extends StatelessWidget {
   final BackupRecord? backup;
   final RenderNotebook? notebook;
   final RenderNode? node;
+  final NotebookSearchHit? selectedSearchHit;
   final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
@@ -2113,14 +3497,19 @@ class _EntryViewer extends StatelessWidget {
         text: 'Select a page to render its backed-up contents.',
       );
     }
+    final landingHit = selectedSearchHit?.chunk.nodeId == selected.id
+        ? selectedSearchHit
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PaneHeader(
           icon: Icons.article_outlined,
           title: selected.title,
-          trailing: Text('${selected.parts.length} parts'),
+          trailing: Text(_pageCountSummary(selected)),
         ),
+        _PageContextBar(notebook: notebook!, node: selected),
+        if (landingHit != null) _SearchLandingBanner(hit: landingHit),
         Expanded(
           child: selected.parts.isEmpty
               ? const _EmptyState(
@@ -2129,17 +3518,227 @@ class _EntryViewer extends StatelessWidget {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemCount: selected.parts.length,
+                  itemCount: selected.parts.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _EntryPartView(
-                    service: service,
-                    backup: backup,
-                    part: selected.parts[index],
-                    onDownloadAttachment: onDownloadAttachment,
-                  ),
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return _PageOutline(parts: selected.parts);
+                    }
+                    return _EntryPartView(
+                      service: service,
+                      backup: backup,
+                      part: selected.parts[index - 1],
+                      onDownloadAttachment: onDownloadAttachment,
+                    );
+                  },
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _PageContextBar extends StatelessWidget {
+  const _PageContextBar({required this.notebook, required this.node});
+
+  final RenderNotebook notebook;
+  final RenderNode node;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final path = _nodePathParts(notebook, node);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.30),
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Icon(Icons.route_outlined, size: 16, color: colors.primary),
+              for (var index = 0; index < path.length; index++) ...[
+                if (index > 0)
+                  Icon(
+                    Icons.chevron_right,
+                    size: 15,
+                    color: colors.onSurfaceVariant,
+                  ),
+                Text(
+                  path[index],
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: index == path.length - 1
+                        ? colors.onSurface
+                        : colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _StatusPill(
+                label: _pageCountSummary(node),
+                color: colors.primary,
+              ),
+              _StatusPill(
+                label:
+                    '${_attachmentCount(node)} attachment${_attachmentCount(node) == 1 ? '' : 's'}',
+                color: _nihCoolAccent,
+              ),
+              _StatusPill(
+                label:
+                    '${_commentCount(node)} comment${_commentCount(node) == 1 ? '' : 's'}',
+                color: _nihWarning,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchLandingBanner extends StatelessWidget {
+  const _SearchLandingBanner({required this.hit});
+
+  final NotebookSearchHit hit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer.withValues(alpha: 0.45),
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.manage_search_outlined, color: colors.primary, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Opened from search: ${hit.chunk.path}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hit.snippet,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _StatusPill(
+            label: 'score ${hit.score.toStringAsFixed(1)}',
+            color: colors.primary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PageOutline extends StatelessWidget {
+  const _PageOutline({required this.parts});
+
+  final List<RenderPart> parts;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final sortedParts = [...parts]
+      ..sort((a, b) => a.position.compareTo(b.position));
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.view_list_outlined, color: colors.primary, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Page Outline',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var index = 0; index < sortedParts.length; index++)
+                  _PartOutlineChip(part: sortedParts[index], index: index + 1),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PartOutlineChip extends StatelessWidget {
+  const _PartOutlineChip({required this.part, required this.index});
+
+  final RenderPart part;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final support = part.isAttachment ? attachmentFormatSupport(part) : null;
+    final icon = part.isAttachment
+        ? _attachmentOutlineIcon(support!)
+        : part.kindLabel.toLowerCase().contains('heading')
+        ? Icons.title
+        : Icons.notes_outlined;
+    final label = part.isAttachment
+        ? part.attachmentName ?? 'Attachment'
+        : part.kindLabel;
+    return Tooltip(
+      message: label,
+      child: Chip(
+        avatar: Icon(icon, size: 16, color: colors.primary),
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 180),
+          child: Text(
+            '$index. $label',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }
@@ -2162,6 +3761,9 @@ class _EntryPartView extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     if (part.isAttachment) {
       final support = attachmentFormatSupport(part);
+      final hasOriginal =
+          part.attachmentOriginalPath != null &&
+          part.attachmentOriginalPath!.isNotEmpty;
       return DecoratedBox(
         decoration: _partDecoration(context),
         child: Padding(
@@ -2192,7 +3794,7 @@ class _EntryPartView extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   IconButton.filledTonal(
-                    tooltip: 'Download original attachment',
+                    tooltip: 'Restore original attachment to a local folder',
                     onPressed: () => onDownloadAttachment(part),
                     icon: const Icon(Icons.download_outlined),
                   ),
@@ -2200,6 +3802,46 @@ class _EntryPartView extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               _AttachmentSupportBadge(support: support),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _AttachmentEvidenceChip(
+                    icon: hasOriginal
+                        ? Icons.verified_outlined
+                        : Icons.report_problem_outlined,
+                    label: hasOriginal
+                        ? 'Original payload indexed'
+                        : 'Original payload not indexed',
+                    color: hasOriginal
+                        ? _nihSuccess
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                  _AttachmentEvidenceChip(
+                    icon: support.labArchivesDirectView
+                        ? Icons.visibility_outlined
+                        : Icons.open_in_new_outlined,
+                    label: support.labArchivesDirectView
+                        ? 'LabArchives-viewable format'
+                        : 'External viewer format',
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  if (part.attachmentSize != null)
+                    _AttachmentEvidenceChip(
+                      icon: Icons.sd_storage_outlined,
+                      label: _formatByteCount(part.attachmentSize!),
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                ],
+              ),
+              if (hasOriginal) ...[
+                const SizedBox(height: 8),
+                SelectableText(
+                  'Original file in backup: ${part.attachmentOriginalPath}',
+                  style: textTheme.bodySmall,
+                ),
+              ],
               if (part.renderText.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
                 SelectableText(part.renderText),
@@ -2266,6 +3908,88 @@ class _EntryPartView extends StatelessWidget {
       border: Border.all(color: colors.outlineVariant),
       borderRadius: BorderRadius.circular(8),
       color: colors.surface,
+    );
+  }
+}
+
+List<String> _nodePathParts(RenderNotebook notebook, RenderNode node) {
+  final nodesById = {for (final item in notebook.nodes) item.id: item};
+  final parts = <String>[];
+  var current = node;
+  final seen = <int>{};
+  while (seen.add(current.id)) {
+    parts.insert(0, current.title);
+    if (current.parentId == 0) {
+      break;
+    }
+    final parent = nodesById[current.parentId];
+    if (parent == null) {
+      break;
+    }
+    current = parent;
+  }
+  return parts.isEmpty ? [node.title] : parts;
+}
+
+int _attachmentCount(RenderNode node) {
+  return node.parts.where((part) => part.isAttachment).length;
+}
+
+int _commentCount(RenderNode node) {
+  return node.parts.fold(0, (count, part) => count + part.comments.length);
+}
+
+String _pageCountSummary(RenderNode node) {
+  final count = node.parts.length;
+  return '$count part${count == 1 ? '' : 's'}';
+}
+
+IconData _attachmentOutlineIcon(AttachmentFormatSupport support) {
+  return switch (support.previewMode) {
+    AttachmentPreviewMode.inlineImage => Icons.image_outlined,
+    AttachmentPreviewMode.inlineText => Icons.description_outlined,
+    AttachmentPreviewMode.jupyterSummary => Icons.data_object_outlined,
+    AttachmentPreviewMode.externalViewer => Icons.open_in_new_outlined,
+    AttachmentPreviewMode.downloadOnly => Icons.attach_file,
+  };
+}
+
+class _AttachmentEvidenceChip extends StatelessWidget {
+  const _AttachmentEvidenceChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2784,6 +4508,20 @@ String _formatDateTime(DateTime value) {
   final minute = local.minute.toString().padLeft(2, '0');
   final period = local.hour < 12 ? 'AM' : 'PM';
   return '${local.month}/${local.day}/${local.year} $hour:$minute $period';
+}
+
+String _formatByteCount(int bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  if (unit == 0) {
+    return '$bytes ${units[unit]}';
+  }
+  return '${value.toStringAsFixed(value >= 10 ? 1 : 2)} ${units[unit]}';
 }
 
 String _weekdayName(int weekday) {

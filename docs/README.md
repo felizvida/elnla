@@ -13,6 +13,14 @@ ignored folders.
 
 ## Developer Documents
 
+- `strategic_plan.md`: phased product and engineering roadmap for making
+  BenchVault a first-class backup, verification, search, and offline-review
+  experience.
+- `implementation_limitations.md`: current known implementation boundaries,
+  including read-only safety, backup coverage, viewer rendering, search,
+  integrity, credentials, scheduling, and platform support.
+- `platform_release_checklist.md`: macOS release gate plus Windows and iPad
+  validation checklist.
 - `developer/labarchives_gov_api_reference.md`: compact implementation
   reference distilled from the LabArchives GOV API notebook PDF.
 - Backup reader/search sidecars are generated locally under each backup run in

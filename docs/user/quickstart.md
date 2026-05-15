@@ -20,6 +20,9 @@ instrument output, and other bench-research attachments.
 ## What BenchVault Does
 
 - Backs up every notebook that your LabArchives account is allowed to back up.
+- Uses a production read-only LabArchives allowlist for login, user-access
+  lookup, and notebook backup download only.
+- Runs a Backup Center preflight before backup starts.
 - Keeps the original LabArchives archive file for preservation.
 - Verifies full-size original attachment files after backup by byte size.
 - Seals each backup with SHA-256 checksums and warns if files change later.
@@ -28,6 +31,10 @@ instrument output, and other bench-research attachments.
   natural-language answers when you add an OpenAI API key.
 - Lets you schedule routine backups while the app is open.
 - Stores credentials and backups locally, not in GitHub.
+
+> BenchVault is for backup and offline viewing. The production app does not add,
+> update, delete, upload, or restore content to the original LabArchives
+> notebook.
 
 ## Before You Start
 
@@ -43,6 +50,10 @@ At NIH and NICHD, lab notebook ownership is restricted to lab chiefs, also known
 as PIs. The LabArchives full-size notebook backup API is owner-only. If you can
 see a notebook but you are not the PI owner, BenchVault can list it but cannot
 download its full-size backup archive.
+
+> At NIH and NICHD, full-size LabArchives backup is owner-only. A visible notebook
+> is not necessarily a notebook your account can download as a full preservation
+> archive.
 
 Choose a backup folder that is easy to protect and easy to find. A good pattern
 is to create a dedicated folder named `BenchVault_Backups` in a secure local or
@@ -64,12 +75,30 @@ code into the setup screen and click `Use Auth Code`.
 
 ## Run a Manual Backup
 
-1. Click `Backup All`.
-2. Keep the app open while the backup is running.
-3. Watch the status messages in the backup log.
-4. When backup finishes, select a backup from the left pane.
-5. Browse pages in the notebook tree.
-6. Select a page to read its backed-up contents.
+1. Review the Backup Center preflight band.
+2. Open `Details` if any item says `Blocked` or `Review`.
+3. Resolve blocking checks before backup.
+4. Click `Back Up Now`.
+5. Keep the app open while the backup is running.
+6. Watch the status messages in the backup log.
+7. When backup finishes, select a backup from the left pane.
+8. Browse pages in the notebook tree.
+9. Select a page to read its backed-up contents.
+
+The preflight checks local readiness before backup starts. It covers local
+credentials, notebook list, backup folder writability, available storage, archive
+extractor availability, the read-only LabArchives API guardrail, OpenAI search
+configuration, and schedule state. A blocking preflight check prevents backup
+from starting until it is resolved.
+
+After each run, BenchVault writes a local run manifest with per-notebook
+outcomes, classified skip reasons, successful backup records, and the run log.
+The backup pane shows the latest run summary, persistent notebook status cards,
+and the local backup copies available for reading. Each notebook card combines
+the latest run outcome with prior local backups, so a skipped notebook can still
+show whether an older protected copy exists. Open `Details` in the latest-run
+banner to review every notebook outcome, suggested next action, and run-log
+line.
 
 BenchVault may skip notebooks that are visible to you but not eligible for API backup
 with your current permissions. This does not mean the backup system failed. It
@@ -96,6 +125,29 @@ the viewer re-checks protected files. If a file was changed, removed, or added,
 BenchVault shows a warning before you rely on that copy. This is tamper-evidence for
 local preservation; it is not a legal certification by itself.
 
+> Tamper-evidence depends on protecting the backup folder after it is written.
+> BenchVault can warn when sealed files change, but it does not replace formal
+> records policy, chain-of-custody review, or institutional legal guidance.
+
+## Export An Audit Summary
+
+When a backup is selected, the integrity banner includes an `Audit` action.
+BenchVault writes three local sidecars under the selected backup run's `audit/`
+folder:
+
+- `backup_audit_summary.md`: human-readable backup and integrity summary.
+- `backup_audit_summary.json`: machine-readable backup, integrity, and export
+  metadata.
+- `integrity_files.csv`: protected file paths, byte counts, SHA-256 hashes, and
+  backup-time modification timestamps.
+- `external_hash_anchor.txt`: a compact manifest-hash record that can be placed
+  in an institutional records system, WORM storage, or another append-only
+  location.
+
+The audit export is derived from the local backup and integrity manifest. It is
+useful for review packets and internal records conversations, but it is still
+tamper-evidence rather than legal certification by itself.
+
 ## Supported Attachments
 
 LabArchives can attach documents of any file type and format. BenchVault therefore
@@ -121,18 +173,29 @@ preserved, sealed, and restorable from the attachment card for inspection in the
 appropriate local application. HTML and SVG attachments are shown as source text;
 the viewer does not run embedded scripts.
 
+Attachment cards show whether the original payload was indexed in the backup,
+whether the format is usually viewable in LabArchives, the reported byte size,
+and the relative path of the preserved original file. Use the restore button on
+the card to copy the original payload into a folder you choose.
+
 ## Search Backed-Up Notebooks
 
 ![Natural-language notebook search](../assets/screenshots/benchvault-ai-search.png){width=80%}
 
 Use the search field above the notebook viewer to ask about backed-up content.
 BenchVault always creates a local readable copy first, then searches that copy.
+Use the search controls to narrow results to page text, attachments, comments,
+exact phrases, or verified backups only.
 
 Without an OpenAI API key, or if the OpenAI request fails, search uses local
 fuzzy matching and shows the best matching pages. With an OpenAI API key, BenchVault
 sends the best matching excerpts to OpenAI and returns a concise answer with
 page citations. The OpenAI key is stored locally in the ignored credentials
 folder.
+
+> Credentials, OpenAI keys, notebook IDs, access XML, source PDFs, and raw backup
+> archives should remain local-only. Public GitHub files should contain only
+> examples or placeholders.
 
 Useful searches include:
 
@@ -155,6 +218,31 @@ Useful searches include:
 Scheduled backups run while BenchVault is open. If the app is closed, a scheduled
 backup will not run until app-level background scheduling is added for your
 platform.
+
+## Known Limitations
+
+BenchVault is meant for backup and offline viewing. It does not edit
+LabArchives, restore records back into LabArchives, back up external systems
+linked from notebook pages, or replace institutional records policy.
+
+Current practical limits:
+
+- Full-size backup is limited by LabArchives owner permissions.
+- Automatic backups run only while the app is open.
+- Integrity checks are tamper-evidence, not true immutability or legal
+  certification.
+- The viewer preserves more formats than it previews inline. Office files, PDFs,
+  TIFF images, SnapGene files, media, archives, and proprietary instrument files
+  may need to be restored and opened in another local application.
+- Search does not read inside most binary attachments. OpenAI search sends only
+  selected excerpts when an OpenAI key is configured; otherwise BenchVault uses
+  local fuzzy search.
+- Credentials and backups are local files protected by local machine controls;
+  they are not stored in a built-in encrypted vault.
+- macOS is the primary tested platform. Windows and iPad support are scaffolded
+  but still need platform-specific validation.
+
+The full limitations list is maintained in `docs/implementation_limitations.md`.
 
 ## Backup Folder Structure
 
@@ -195,14 +283,23 @@ LabArchives and it does not write changes back to LabArchives.
 Use the viewer to:
 
 - Confirm a notebook was backed up.
+- Check each notebook's `Notebook Status` card for latest run status, owner
+  action, prior local copies, and original-attachment verification.
+- Use the page breadcrumb and outline to orient yourself inside long notebooks.
 - Review page titles and entries.
 - Read text entries, rich text, and headings.
-- Check attachment names, types, and sizes.
-- Click the download button on an attachment card to restore a copy of the
+- Check attachment names, types, sizes, and preservation evidence chips.
+- Click the restore button on an attachment card to copy the
   backed-up original file into a folder you choose.
 - Open the backup folder when you need to inspect the preservation archive.
 - Watch the integrity banner at the top of the viewer before relying on a
   backup copy.
+- Open the integrity details button to review the manifest path, local seal
+  state, checked file count, checked byte count, manifest hash, and any changed,
+  missing, or unexpected files.
+- Click `Audit` in the integrity banner to export a local Markdown summary,
+  machine-readable JSON, integrity-file CSV, and external hash anchor for the
+  selected backup.
 
 ## Good Lab Practice
 
@@ -227,14 +324,14 @@ and the notebook owner should be the lab chief or PI.
 original attachment or the byte sizes did not match. Run backup again. If it
 still fails, keep the failed run for review and contact the project maintainer.
 
-`No local backups yet`: Click `Backup All`, or check that the backup folder is
+`No local backups yet`: Click `Back Up Now`, or check that the backup folder is
 available.
 
 ## Quick Checklist
 
 - Connect credentials.
 - Choose backup folder.
-- Click `Backup All`.
+- Click `Back Up Now`.
 - Confirm the backup appears in the viewer.
 - Check that original attachment verification passed.
 - Enable routine backups.
