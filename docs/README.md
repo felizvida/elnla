@@ -23,6 +23,7 @@ ignored folders.
   validation checklist.
 - `developer/labarchives_gov_api_reference.md`: compact implementation
   reference distilled from the LabArchives GOV API notebook PDF.
+- `releases/`: tracked release notes used for GitHub release entries.
 - Backup reader/search sidecars are generated locally under each backup run in
   `readable/`; they are not tracked repository documents.
 
