@@ -24,13 +24,13 @@ LabArchives interface for the backup-and-review job.
 - Preservation first: keep the original LabArchives archive and full-size
   attachments as the evidence reference.
 - Read-only by design: production code must never create, edit, upload, delete,
-  or restore content back to LabArchives.
+  or write content back to LabArchives.
 - Explain before failing: every skip, warning, and failure should name the
   likely cause and the next useful action.
 - Progressive disclosure: show a simple status first, then detailed manifests,
   hashes, paths, and logs when needed.
-- Local-first: backup, browse, fuzzy search, integrity checks, and attachment
-  restore should work without OpenAI or continuous network access after backup.
+- Local-first: backup, browse, local search, integrity checks, and Save
+  Original should work without OpenAI or continuous network access after backup.
 - Sensitive by default: never expose local absolute paths, notebook IDs,
   credentials, access XML, source PDFs, or raw backup archives in public assets.
 - NIH-appropriate tone: restrained visual design, clear status language, no
@@ -55,7 +55,7 @@ Deliverables:
 - Failure classifier for common cases: not owner, API credentials missing,
   authorization expired, extractor missing, disk full, attachment verification
   failed, network interrupted, unknown API error.
-- A single primary action: `Back Up Now`.
+- A single primary action: `Back Up Eligible Notebooks`.
 
 Definition of done:
 
@@ -77,7 +77,7 @@ Deliverables:
 - Polished rendering for headings, rich text, plain text, comments, simple
   tables, and links converted to readable text with URLs.
 - Attachment cards showing file family, original filename, size, checksum
-  status, restore action, preview status, and recommended external viewer when
+  status, Save Original action, preview status, and recommended external viewer when
   inline preview is not safe or practical.
 - Integrity banner that stays visible and changes tone for verified, changed,
   legacy, missing seal, or active verification states.
@@ -100,7 +100,7 @@ Deliverables:
 - Unified search across notebook names, page paths, titles, rendered text,
   comments, attachment names, attachment metadata, instrument names, sample IDs,
   and backup dates.
-- Local fuzzy search with filters for notebook, date, attachment family,
+- Local search with filters for notebook, date, attachment family,
   verified/unverified backup state, page/comment/attachment scope, and exact
   phrase mode.
 - Optional OpenAI answer mode with clear consent language, visible model state,
@@ -265,8 +265,8 @@ Exit criteria:
 Target outcome: offline reading feels purpose-built and polished.
 
 Status: implemented for the first production slice. Attachment cards expose
-original-payload indexing, LabArchives-viewable status, reported byte size,
-relative original payload path, and a restore action. The reader shows page
+original-file preservation, LabArchives-viewable status, reported byte size,
+relative original file path, and a Save Original action. The reader shows page
 breadcrumbs, part/comment/attachment counts, and a compact page outline. The
 viewer also exposes an integrity detail dialog. The parser now records
 attachment uploaded/original version metadata and preserved thumbnail paths when
@@ -278,7 +278,8 @@ Implementation tasks:
   reading pane.
 - Continue refining page breadcrumbs and local page outline.
 - Improve rich-text/table rendering without executing active content.
-- Continue redesigning attachment cards around preview, preserve, restore, and
+- Continue redesigning attachment cards around preview, preserve, Save
+  Original, and
   provenance.
 - Add a richer integrity drawer or export flow after the current detail dialog.
 
@@ -291,7 +292,7 @@ Exit criteria:
 
 Target outcome: search becomes the fastest way to retrieve evidence.
 
-Status: implemented for the first production slice. Local fuzzy search and
+Status: implemented for the first production slice. Local search and
 OpenAI answer mode are available, with filters for all content, page text,
 attachments, comments, exact phrase, and verified backups only. Search result
 selection lands on the matching backed-up page and highlights likely matching
@@ -408,7 +409,7 @@ backup core.
 - A skipped non-owned notebook produces an understandable owner-rights message.
 - A changed protected file produces a visible warning before the user reads the
   backup.
-- Local fuzzy search returns useful results for sample IDs, instruments,
+- Local search returns useful results for sample IDs, instruments,
   protocols, page titles, comments, and attachment names.
 - Demo screenshots contain only synthetic data.
 - Repository scans find no local absolute paths, credentials, raw backups,

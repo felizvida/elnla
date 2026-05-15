@@ -33,7 +33,7 @@ Required before a public macOS build:
   user chooses a connection action.
 - Confirm manual backup preflight blocks missing credentials.
 - Confirm backup folder picker works.
-- Confirm attachment restore copies a file without overwriting an existing file.
+- Confirm Save Original copies a file without overwriting an existing file.
 - Confirm integrity warnings appear when a protected file changes.
 - Confirm audit export writes Markdown, JSON, and CSV sidecars under the backup
   run's `audit/` folder.
@@ -60,7 +60,7 @@ until this checklist is completed on real NIH/NICHD Windows workstations:
 - Confirm local credential files are written with appropriate user-only
   permissions or replaced with Windows Credential Manager integration.
 - Confirm scheduled backup behavior while the app is open.
-- Confirm attachment restore and audit export work with Windows paths.
+- Confirm Save Original and audit export work with Windows paths.
 - Add installer packaging, Authenticode signing, and endpoint/security review
   before broad Windows distribution.
 

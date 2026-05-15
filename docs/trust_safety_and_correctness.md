@@ -33,17 +33,17 @@ in an external append-only or WORM-controlled system.
   code is limited to read-only operations.
 - `lib/src/backup_service.dart`: setup, preflight checks, download, extraction,
   verification, readable sidecar generation, integrity sealing, audit export,
-  and attachment restore.
+  and Save Original attachment copying.
 - `lib/src/backup_parser.dart`: parses LabArchives JSON backup tables, or a
   SQLite backup layout when JSON tables are absent and `sqlite3` is available.
 - `lib/src/readable_notebook_exporter.dart`: creates Markdown and JSONL search
   sidecars from the parsed backup.
 - `lib/main.dart`: macOS-first Flutter interface for setup, backup, offline
-  viewing, integrity warnings, attachment restore, audit export, and search.
+  viewing, integrity warnings, Save Original, audit export, and search.
 - `test/read_only_contract_test.dart`: regression tests that fail if production
   LabArchives code introduces mutable endpoints.
 - `test/backup_service_settings_test.dart` and `test/backup_parser_test.dart`:
-  regression tests for settings, parsing, search, restore, audit export, and
+  regression tests for settings, parsing, search, Save Original, audit export, and
   integrity behavior.
 
 ## Backup Flow
@@ -171,12 +171,12 @@ When a user opens a backup later, BenchVault verifies:
 - every protected file still has the expected SHA-256 hash,
 - no unexpected protected-file additions are present.
 
-If a file is changed, missing, or unexpectedly added, the viewer shows a warning
-before the user relies on the backup. The integrity details show the affected
-relative file paths.
+If a file is changed, missing, or unexpectedly added, the viewer blocks the
+normal reader and shows `Local copy not verified` before the user relies on the
+backup. The integrity details show the affected relative file paths.
 
 Backup metadata paths are treated as untrusted input. The viewer and attachment
-restore paths reject absolute paths, drive-letter paths, UNC-style paths, and
+Save Original paths reject absolute paths, drive-letter paths, UNC-style paths, and
 `..` traversal before opening local files. Existing local files must also
 resolve inside the configured backup folder, so symlink targets outside the
 backup folder are rejected. Legacy records may point under `backups/`, but
@@ -226,10 +226,10 @@ The backup endpoint also rejects unexpected parameters. This matters because
 even a read endpoint can be weakened by parameters that change preservation
 behavior.
 
-The app never restores data back into LabArchives. In BenchVault, "restore
-attachment" means copying a backed-up original payload to a user-selected local
-folder. The destination filename is sanitized and made unique to avoid
-overwriting an existing local file.
+The app never writes data back into LabArchives. In BenchVault, `Save Original`
+means copying a backed-up original file to a user-selected local folder. The
+destination filename is sanitized and made unique to avoid overwriting an
+existing local file.
 
 The repository contains one write-capable script:
 
@@ -284,15 +284,16 @@ certification.
 
 BenchVault surfaces safety status in the UI:
 
-- preflight panel before backup,
-- read-only contract banner,
-- latest run summary and notebook status cards,
+- Notebook Protection health strip,
+- preflight details before backup,
+- read-only LabArchives access status,
+- latest run summary and Notebook Protection cards,
 - per-notebook skipped/success outcomes,
 - owner-rights explanations for NIH/NICHD context,
-- integrity banner before viewing a selected backup,
+- integrity status before viewing a selected backup,
 - integrity details for changed, missing, or unexpected files,
 - audit export action,
-- attachment cards showing preservation evidence and restore behavior.
+- attachment cards showing preservation evidence and Save Original behavior.
 
 The goal is that a reviewer should not need to inspect raw logs to know whether
 a backup is usable.

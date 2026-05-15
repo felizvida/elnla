@@ -9,7 +9,7 @@ class NotebookSearchService {
   NotebookSearchService(this.backupService);
 
   static const _fallbackMethodSummary =
-      'Local fuzzy fallback uses on-device BM25 relevance, phrase boosts, typo-tolerant token matching, and character n-gram similarity.';
+      'Local search uses on-device BM25 relevance, phrase boosts, typo-tolerant token matching, and character n-gram similarity.';
 
   final BackupService backupService;
 
@@ -90,7 +90,7 @@ class NotebookSearchService {
         usedOpenAi: false,
         filters: filters,
         warning:
-            'OpenAI search unavailable; showing local fuzzy fallback. ${_briefError(error)}',
+            'OpenAI search unavailable; showing local search fallback. ${_briefError(error)}',
       );
     }
   }
@@ -430,15 +430,15 @@ class NotebookSearchService {
   }) {
     if (hits.isEmpty) {
       return missingOpenAiKey
-          ? 'No local fuzzy matches found. Add an OpenAI API key in Search Settings for natural-language answers.'
-          : 'No local fuzzy matches found.';
+          ? 'No local matches found. Add an OpenAI API key in Search Settings for natural-language answers.'
+          : 'No local matches found.';
     }
     final buffer = StringBuffer();
     if (fallbackReason == null) {
-      buffer.write('Local fuzzy search found ${hits.length} likely match');
+      buffer.write('Local search found ${hits.length} likely match');
     } else {
       buffer.write(
-        '$fallbackReason. Local fuzzy fallback found ${hits.length} likely match',
+        '$fallbackReason. Local search fallback found ${hits.length} likely match',
       );
     }
     if (hits.length != 1) {

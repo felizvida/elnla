@@ -43,7 +43,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives can directly view common browser images and annotate JPG, PNG, and GIF images.',
       benchvaultSupport:
-          'BenchVault previews this image inline and restores the original file.',
+          'BenchVault previews this image inline and can save the original file locally.',
       previewMode: AttachmentPreviewMode.inlineImage,
       labArchivesDirectView: true,
     );
@@ -54,7 +54,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives stores TIFF files, but its Image Annotator notes that TIFF is not browser-native.',
       benchvaultSupport:
-          'BenchVault preserves and restores the original TIFF; open it in an image-analysis tool for viewing.',
+          'BenchVault preserves the original TIFF and can save it locally for image-analysis tools.',
       previewMode: AttachmentPreviewMode.externalViewer,
     );
   }
@@ -63,7 +63,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'PDF document',
       labArchivesSupport: 'LabArchives can directly view PDF attachments.',
       benchvaultSupport:
-          'BenchVault recognizes the PDF, preserves the original, and restores it for local viewing.',
+          'BenchVault recognizes the PDF, preserves the original, and can save it locally for viewing.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -74,7 +74,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives can view Word, Excel, and PowerPoint files through Office for the Web; newer formats can be edited when enabled.',
       benchvaultSupport:
-          'BenchVault recognizes Office files, preserves the original, and restores it for local Office-compatible viewing.',
+          'BenchVault recognizes Office files, preserves the original, and can save it locally for Office-compatible viewing.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -85,7 +85,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives can view Jupyter notebooks in its Docs Viewer.',
       benchvaultSupport:
-          'BenchVault summarizes notebook cells inline and restores the original .ipynb file.',
+          'BenchVault summarizes notebook cells inline and can save the original .ipynb file locally.',
       previewMode: AttachmentPreviewMode.jupyterSummary,
       labArchivesDirectView: true,
     );
@@ -99,7 +99,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives can directly view and index supported text files under the attachment size threshold.',
       benchvaultSupport:
-          'BenchVault previews the text inline and restores the original file.',
+          'BenchVault previews the text inline and can save the original file locally.',
       previewMode: AttachmentPreviewMode.inlineText,
       labArchivesDirectView: true,
     );
@@ -110,7 +110,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives SnapGene/Geneious integrations support common sequence formats such as FASTA, GenBank, and EMBL.',
       benchvaultSupport:
-          'BenchVault previews text-based sequence content inline and restores the original file.',
+          'BenchVault previews text-based sequence content inline and can save the original file locally.',
       previewMode: AttachmentPreviewMode.inlineText,
       labArchivesDirectView: true,
     );
@@ -121,7 +121,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives SnapGene/Geneious integrations support this sequence-project family and may show a sequence preview.',
       benchvaultSupport:
-          'BenchVault recognizes the format and restores the original file for SnapGene, Geneious, or compatible tools.',
+          'BenchVault recognizes the format and can save the original file locally for SnapGene, Geneious, or compatible tools.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -132,8 +132,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives Inventory accepts chemical file formats including CDX, CDXML, MOL, SDF, and SKC.',
       benchvaultSupport: _chemicalTextExtensions.contains(extension)
-          ? 'BenchVault previews this text-based chemical file inline and restores the original file.'
-          : 'BenchVault recognizes the format and restores the original file for a chemical drawing or structure tool.',
+          ? 'BenchVault previews this text-based chemical file inline and can save the original file locally.'
+          : 'BenchVault recognizes the format and can save the original file locally for a chemical drawing or structure tool.',
       previewMode: _chemicalTextExtensions.contains(extension)
           ? AttachmentPreviewMode.inlineText
           : AttachmentPreviewMode.externalViewer,
@@ -148,7 +148,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives can store media attachments and commonly shows recognized media with viewer or file-type controls.',
       benchvaultSupport:
-          'BenchVault preserves and restores the original media file for local playback.',
+          'BenchVault preserves the original media file and can save it locally for playback.',
       previewMode: AttachmentPreviewMode.externalViewer,
     );
   }
@@ -158,7 +158,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       labArchivesSupport:
           'LabArchives stores arbitrary attachment formats, including packages and archives.',
       benchvaultSupport:
-          'BenchVault preserves and restores the original archive without unpacking it in the read-only viewer.',
+          'BenchVault preserves the original archive and can save it locally without unpacking it in the read-only viewer.',
       previewMode: AttachmentPreviewMode.downloadOnly,
     );
   }
@@ -167,7 +167,7 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
     labArchivesSupport:
         'LabArchives allows documents of any file type and format to be attached to a notebook page.',
     benchvaultSupport:
-        'BenchVault preserves the original payload and restores it even when no inline preview is available.',
+        'BenchVault preserves the original file and can save it locally even when no inline preview is available.',
     previewMode: AttachmentPreviewMode.downloadOnly,
   );
 }

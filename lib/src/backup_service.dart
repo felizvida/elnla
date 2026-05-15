@@ -425,7 +425,7 @@ class BackupService {
       id: 'openai_search',
       title: 'Notebook search',
       detail:
-          'OpenAI search is not configured. Local fuzzy search remains available.',
+          'OpenAI search is not configured. Local search remains available.',
       status: PreflightStatus.info,
     );
   }
@@ -435,14 +435,14 @@ class BackupService {
       final next = schedule.nextRunAfter(DateTime.now());
       return PreflightCheck(
         id: 'automatic_backup',
-        title: 'Automatic backup',
-        detail: 'Enabled. Next run: ${next.toLocal()}.',
+        title: 'Auto backup while app is open',
+        detail: 'Next run while app is open: ${next.toLocal()}.',
         status: PreflightStatus.pass,
       );
     }
     return const PreflightCheck(
       id: 'automatic_backup',
-      title: 'Automatic backup',
+      title: 'Auto backup while app is open',
       detail: 'Not enabled. Manual backup is available.',
       status: PreflightStatus.info,
     );

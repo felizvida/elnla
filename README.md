@@ -36,14 +36,14 @@ in the app and in the documentation so backup failures are easier to understand.
   the LabArchives API.
 - Uses a production read-only LabArchives allowlist for login, user-access
   lookup, and notebook backup download only; it does not add, update, delete,
-  upload, or restore content to LabArchives.
+  upload, or write content back to LabArchives.
 - Keeps the original LabArchives `.7z` archive for preservation.
 - Extracts and indexes notebook pages for local read-only viewing.
 - Shows page breadcrumbs, page counts, comment counts, attachment counts, and a
   compact page outline in the offline reader.
 - Writes a separate readable Markdown copy plus JSONL search chunks for every
   successful backup.
-- Provides notebook search with local fuzzy fallback and OpenAI-powered
+- Provides notebook search with local search fallback and OpenAI-powered
   natural-language answers when the user saves an OpenAI API key locally,
   including filters for text, attachments, comments, exact phrase, and verified
   backups.
@@ -51,8 +51,9 @@ in the app and in the documentation so backup failures are easier to understand.
   images, text/tabular files, PDFs, Office documents, Jupyter notebooks,
   SnapGene/sequence files, chemical structure files, media, archives, and
   unknown custom formats.
-- Shows attachment preservation evidence in the viewer, including original
-  payload indexing, LabArchives-viewable status, byte size, and restore action.
+- Shows attachment preservation evidence in the viewer, including original file
+  preservation, LabArchives-viewable status, byte size, and a Save Original
+  action.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
 - Retries eligible skipped notebooks from the latest run while leaving
@@ -130,7 +131,7 @@ tracked substitute used during implementation.
 
 BenchVault is macOS-first and focused on LabArchives GOV backup/offline viewing.
 It is not a LabArchives editor, legal certification system, immutable storage
-system, or background service. Automatic backups currently run only while the
+system, or background service. Auto backups currently run only while the
 app is open, readable views simplify some LabArchives formatting, and Windows
 and iPad support still need real-device/platform validation beyond CI builds. See the
 [implementation limitations](docs/implementation_limitations.md) for the full

@@ -5,6 +5,6 @@ void main() {
   testWidgets('BenchVault shell renders', (tester) async {
     await tester.pumpWidget(const BenchVaultApp());
     expect(find.text('BenchVault'), findsOneWidget);
-    expect(find.text('Back Up Now'), findsOneWidget);
+    expect(find.text('Back Up Eligible Notebooks'), findsWidgets);
   });
 }

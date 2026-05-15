@@ -642,7 +642,7 @@ void main() {
     ).search('zebrafsh Zeis microscop raw imgng');
     expect(fuzzyResult.usedOpenAi, isFalse);
     expect(fuzzyResult.hits.single.chunk.pageTitle, 'Zebrafish hypoxia assay');
-    expect(fuzzyResult.answer, contains('Local fuzzy search'));
+    expect(fuzzyResult.answer, contains('Local search'));
 
     final attachmentResult = await NotebookSearchService(service).search(
       'zebrafish_image.czi',

@@ -20,6 +20,9 @@ const _nihGold = Color(0xffface00);
 const _nihGoldLight = Color(0xfffff5c2);
 const _nihCoolAccent = Color(0xff1dc2ae);
 const _nihSurface = Color(0xfffbfcfd);
+const _nihPanel = Color(0xffffffff);
+const _nihMist = Color(0xffeef6f8);
+const _nihBorder = Color(0xffd5dee3);
 const _nihSuccess = Color(0xff0f6460);
 const _nihWarning = Color(0xff8a5a00);
 
@@ -47,13 +50,17 @@ class BenchVaultApp extends StatelessWidget {
           onSecondaryContainer: _nihBlueDark,
           tertiary: _nihCoolAccent,
           surface: _nihSurface,
+          surfaceContainer: _nihPanel,
+          surfaceContainerHighest: _nihMist,
+          outlineVariant: _nihBorder,
         );
+    final baseTheme = ThemeData(colorScheme: scheme, useMaterial3: true);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'BenchVault',
-      theme: ThemeData(
-        colorScheme: scheme,
-        useMaterial3: true,
+      theme: baseTheme.copyWith(
+        textTheme: _zeroLetterSpacing(baseTheme.textTheme),
+        primaryTextTheme: _zeroLetterSpacing(baseTheme.primaryTextTheme),
         visualDensity: VisualDensity.compact,
         scaffoldBackgroundColor: _nihSurface,
         appBarTheme: const AppBarTheme(
@@ -61,20 +68,153 @@ class BenchVaultApp extends StatelessWidget {
           foregroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
+          toolbarHeight: 64,
+          titleSpacing: 16,
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: _nihBlue,
             foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            side: BorderSide(color: scheme.outlineVariant),
+          ),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        chipTheme: baseTheme.chipTheme.copyWith(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        dividerTheme: const DividerThemeData(
+          color: _nihBorder,
+          thickness: 1,
+          space: 1,
+        ),
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          selectedColor: _nihBlueDark,
+          iconColor: _nihBlue,
+          selectedTileColor: _nihBlueLightest.withValues(alpha: 0.68),
+        ),
+        tabBarTheme: TabBarThemeData(
+          dividerColor: scheme.outlineVariant,
+          indicatorColor: scheme.primary,
+          labelColor: scheme.primary,
+          unselectedLabelColor: scheme.onSurfaceVariant,
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        dialogTheme: DialogThemeData(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          backgroundColor: scheme.surface,
+        ),
+        segmentedButtonTheme: SegmentedButtonThemeData(
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
           focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: scheme.primary, width: 2),
           ),
         ),
       ),
       home: const BenchVaultHome(),
+    );
+  }
+}
+
+TextTheme _zeroLetterSpacing(TextTheme textTheme) {
+  TextStyle? clean(TextStyle? style) => style?.copyWith(letterSpacing: 0);
+  return textTheme.copyWith(
+    displayLarge: clean(textTheme.displayLarge),
+    displayMedium: clean(textTheme.displayMedium),
+    displaySmall: clean(textTheme.displaySmall),
+    headlineLarge: clean(textTheme.headlineLarge),
+    headlineMedium: clean(textTheme.headlineMedium),
+    headlineSmall: clean(textTheme.headlineSmall),
+    titleLarge: clean(textTheme.titleLarge),
+    titleMedium: clean(textTheme.titleMedium),
+    titleSmall: clean(textTheme.titleSmall),
+    bodyLarge: clean(textTheme.bodyLarge),
+    bodyMedium: clean(textTheme.bodyMedium),
+    bodySmall: clean(textTheme.bodySmall),
+    labelLarge: clean(textTheme.labelLarge),
+    labelMedium: clean(textTheme.labelMedium),
+    labelSmall: clean(textTheme.labelSmall),
+  );
+}
+
+class _AppTitle extends StatelessWidget {
+  const _AppTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+          ),
+          child: const Icon(Icons.inventory_2_outlined, size: 21),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'BenchVault',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                'Offline notebook backup viewer',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -111,6 +251,8 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
   bool _searchExactPhrase = false;
   bool _searchVerifiedOnly = false;
   bool _openAiSearchReady = false;
+  bool _searchPanelOpen = false;
+  bool _allowUnverifiedCopy = false;
   bool _busy = false;
   bool _setupBusy = false;
   bool _restoreBusy = false;
@@ -268,11 +410,16 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _integrityCheck = BackupIntegrityCheck(
         backupId: 'demo_20260514_090000Z',
         checkedAt: DateTime.utc(2026, 5, 14, 9),
-        hasManifest: false,
-        hasLocalSeal: false,
-        manifestPath: null,
-        checkedFileCount: 0,
-        checkedBytes: 0,
+        hasManifest: true,
+        hasLocalSeal: true,
+        manifestPath:
+            'notebooks/demo_immunology_notebook/2026/05/14/demo_20260514_090000Z/integrity_manifest.json',
+        manifestSha256:
+            'b6bf6bc81f2ce08a9a3ffca9f9f8e71560dfadfa2d9d7098972f9fd6a9b6c85a',
+        sealedManifestSha256:
+            'b6bf6bc81f2ce08a9a3ffca9f9f8e71560dfadfa2d9d7098972f9fd6a9b6c85a',
+        checkedFileCount: 26,
+        checkedBytes: 218906,
       );
       _preflightReport = BackupPreflightReport(
         generatedAt: DateTime.utc(2026, 5, 14, 9),
@@ -310,9 +457,11 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         ],
       );
       _openAiSearchReady = _demoSearchMode;
+      _searchPanelOpen = _demoSearchMode;
+      _allowUnverifiedCopy = false;
       if (_demoSearchMode) {
         _searchController.text =
-            'Which backed-up records contain qPCR results and original payloads?';
+            'Which backed-up records contain qPCR results and original files?';
         _searchResult = _demoOpenAiSearchResult();
       }
       _log
@@ -374,13 +523,11 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _selectedSearchHit = null;
       _integrityCheck = integrityCheck;
       _integrityBusy = false;
+      _allowUnverifiedCopy = false;
       if (loadError != null) {
         _status = 'Viewer could not load backup: $loadError';
       }
     });
-    if (integrityCheck.needsWarning) {
-      unawaited(_showIntegrityWarning(integrityCheck));
-    }
   }
 
   Future<void> _showIntegrityWarning(BackupIntegrityCheck check) async {
@@ -441,11 +588,82 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         actions: [
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Review Backup'),
+            child: const Text('Close'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _showBackupHealthDetails() async {
+    final preflight = _preflightReport;
+    final integrity = _integrityCheck;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          integrity?.needsWarning == true
+              ? Icons.warning_amber_outlined
+              : Icons.health_and_safety_outlined,
+          color: integrity?.needsWarning == true
+              ? Theme.of(context).colorScheme.error
+              : _nihSuccess,
+        ),
+        title: const Text('Notebook Protection Details'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680, maxHeight: 560),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'BenchVault reads LabArchives GOV through login, user-access lookup, and full-size notebook-backup endpoints only. It does not send add, update, delete, upload, or write-back requests.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                if (integrity != null) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    'Selected Backup',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  _IntegrityDetailLine(
+                    label: integrity.statusTitle,
+                    value: integrity.summary,
+                  ),
+                  if (integrity.manifestPath != null)
+                    _IntegrityDetailLine(
+                      label: 'Manifest',
+                      value: integrity.manifestPath!,
+                    ),
+                ],
+                if (preflight != null) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    'Backup Readiness',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  for (final check in preflight.checks)
+                    _PreflightCheckRow(check: check),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openUnverifiedCopy() {
+    setState(() => _allowUnverifiedCopy = true);
   }
 
   Future<void> _exportAuditSummary() async {
@@ -554,10 +772,8 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _selectedNode = node ?? notebook.firstPage;
       _selectedSearchHit = hit;
       _integrityCheck = integrityCheck;
+      _allowUnverifiedCopy = false;
     });
-    if (integrityCheck.needsWarning) {
-      unawaited(_showIntegrityWarning(integrityCheck));
-    }
   }
 
   Future<void> _runSearch() async {
@@ -596,7 +812,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         _searchResult = result;
         _status = result.usedOpenAi
             ? 'Natural-language notebook search complete.'
-            : 'Local fuzzy notebook search complete.';
+            : 'Local notebook search complete.';
       });
     } catch (error) {
       if (!mounted) {
@@ -622,7 +838,8 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
     if (_busy || _setupBusy) {
       if (automatic && mounted) {
         setState(() {
-          _status = 'Automatic backup postponed while another task is running.';
+          _status =
+              'Auto backup while app is open postponed while another task is running.';
           _nextAutomaticBackup = DateTime.now().add(const Duration(minutes: 5));
           _scheduleTimer?.cancel();
           _scheduleTimer = Timer(
@@ -666,7 +883,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       setState(() {
         _log.clear();
         _status =
-            '${automatic ? 'Automatic backup' : 'Backing up'} ${_notebooks.length} notebooks...';
+            '${automatic ? 'Auto backup while app is open' : 'Backing up'} ${_notebooks.length} eligible notebook${_notebooks.length == 1 ? '' : 's'}...';
       });
       final records = await _service.backupAllNotebooks(
         onProgress: (message) {
@@ -684,7 +901,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         _backups = backups;
         _latestRun = latestRun;
         _status =
-            '${automatic ? 'Automatic backup complete' : 'Backup complete'}: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
+            '${automatic ? 'Auto backup complete' : 'Backup complete'}: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
       });
       if (records.isNotEmpty) {
         await _selectBackup(records.first);
@@ -787,7 +1004,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
     }
     setState(() {
       _restoreBusy = true;
-      _status = 'Restoring ${part.attachmentName ?? 'attachment'}...';
+      _status = 'Saving original ${part.attachmentName ?? 'attachment'}...';
     });
     try {
       final restored = await _service.restoreAttachment(
@@ -799,20 +1016,25 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
         return;
       }
       setState(() {
-        _status = 'Attachment restored: ${restored.path}';
-        _log.insert(0, 'Restored ${part.attachmentName ?? restored.path}');
+        _status = 'Original saved: ${restored.path}';
+        _log.insert(
+          0,
+          'Saved original ${part.attachmentName ?? restored.path}',
+        );
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${restored.uri.pathSegments.last}')),
+        SnackBar(
+          content: Text('Original saved: ${restored.uri.pathSegments.last}'),
+        ),
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _status = 'Attachment restore failed: $error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Attachment restore failed: $error')),
-      );
+      setState(() => _status = 'Save original failed: $error');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Save original failed: $error')));
     } finally {
       if (mounted) {
         setState(() => _restoreBusy = false);
@@ -908,8 +1130,8 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       _schedule = updated.schedule;
       _backupRootPath = updated.backupRootPath;
       _status = updated.schedule.enabled
-          ? 'Automatic backup scheduled.'
-          : 'Automatic backup disabled.';
+          ? 'Auto backup while app is open scheduled.'
+          : 'Auto backup while app is open disabled.';
       _rescheduleAutomaticBackup();
     });
     await _refreshPreflight();
@@ -966,9 +1188,9 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
     }
     final next = _nextAutomaticBackup;
     if (next == null) {
-      return 'Automatic backup waiting for setup.';
+      return 'Auto backup waits for setup.';
     }
-    return 'Next automatic backup: ${_formatDateTime(next)} · $_backupRootPath';
+    return 'Auto backup while app is open: ${_formatDateTime(next)} · $_backupRootPath';
   }
 
   @override
@@ -978,7 +1200,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       builder: (context, snapshot) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('BenchVault'),
+            title: const _AppTitle(),
             centerTitle: false,
             actions: [
               IconButton(
@@ -1000,12 +1222,22 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                 icon: const Icon(Icons.manage_accounts_outlined),
               ),
               IconButton(
-                tooltip: 'Automatic backup',
+                tooltip: 'Auto backup while app is open',
                 onPressed: _busy || _setupBusy ? null : _showScheduleDialog,
                 icon: const Icon(Icons.schedule_outlined),
               ),
               IconButton(
-                tooltip: 'Notebook search settings',
+                tooltip: 'Search local backup',
+                onPressed: _busy || _setupBusy
+                    ? null
+                    : () =>
+                          setState(() => _searchPanelOpen = !_searchPanelOpen),
+                icon: Icon(
+                  _searchPanelOpen ? Icons.search_off : Icons.search_outlined,
+                ),
+              ),
+              IconButton(
+                tooltip: 'OpenAI search settings',
                 onPressed: _busy || _setupBusy || _searchBusy
                     ? null
                     : _showSearchSettingsDialog,
@@ -1034,40 +1266,40 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.archive_outlined),
-                label: const Text('Back Up Now'),
+                label: const Text('Back Up Eligible Notebooks'),
               ),
               const SizedBox(width: 12),
             ],
           ),
           body: Column(
             children: [
-              _StatusStrip(
+              _BackupHealthStrip(
                 status: _status,
                 detail: _scheduleDetail,
+                setupReady: _setupStatus?.isReady ?? false,
+                preflight: _preflightReport,
+                integrity: _integrityCheck,
+                latestRun: _latestRun,
+                selectedBackup: _selectedBackup,
                 busy:
                     _busy ||
                     _setupBusy ||
                     _restoreBusy ||
                     _searchBusy ||
                     _integrityBusy,
+                preflightBusy: _preflightBusy,
+                auditBusy: _auditBusy,
+                onDetails: _showBackupHealthDetails,
+                onRefresh: () => unawaited(_refreshPreflight()),
+                onExportAudit: _selectedBackup == null
+                    ? null
+                    : _exportAuditSummary,
+                onBackup: _busy || _setupBusy || _notebooks.isEmpty
+                    ? null
+                    : () => _runBackup(),
               ),
-              const _ReadOnlyContractBanner(),
-              if (_preflightReport != null && (_setupStatus?.isReady ?? false))
-                _PreflightPanel(
-                  report: _preflightReport!,
-                  busy: _preflightBusy,
-                  onRefresh: () => unawaited(_refreshPreflight()),
-                ),
-              if (_setupStatus?.isReady ?? false)
-                _IntegrityBanner(
-                  check: _integrityCheck,
-                  busy: _integrityBusy,
-                  auditBusy: _auditBusy,
-                  onExportAudit: _selectedBackup == null
-                      ? null
-                      : _exportAuditSummary,
-                ),
-              if (_setupStatus?.isReady ?? false)
+              if ((_setupStatus?.isReady ?? false) &&
+                  (_searchPanelOpen || _searchResult != null || _searchBusy))
                 _SearchPanel(
                   controller: _searchController,
                   result: _searchResult,
@@ -1107,11 +1339,20 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                         notebook: _selectedNotebook,
                         selectedNode: _selectedNode,
                         selectedSearchHit: _selectedSearchHit,
+                        integrityCheck: _integrityCheck,
+                        allowUnverifiedCopy: _allowUnverifiedCopy,
                         log: _log,
                         onSelectBackup: _selectBackup,
                         onSelectNode: (node) =>
                             setState(() => _selectedNode = node),
                         onDownloadAttachment: _downloadAttachment,
+                        onReviewIntegrity: () {
+                          final check = _integrityCheck;
+                          if (check != null) {
+                            unawaited(_showIntegrityWarning(check));
+                          }
+                        },
+                        onOpenUnverifiedCopy: _openUnverifiedCopy,
                         onRetryRunFailures: _busy || _setupBusy
                             ? null
                             : _retryLatestRunFailures,
@@ -1126,11 +1367,20 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                       notebook: _selectedNotebook,
                       selectedNode: _selectedNode,
                       selectedSearchHit: _selectedSearchHit,
+                      integrityCheck: _integrityCheck,
+                      allowUnverifiedCopy: _allowUnverifiedCopy,
                       log: _log,
                       onSelectBackup: _selectBackup,
                       onSelectNode: (node) =>
                           setState(() => _selectedNode = node),
                       onDownloadAttachment: _downloadAttachment,
+                      onReviewIntegrity: () {
+                        final check = _integrityCheck;
+                        if (check != null) {
+                          unawaited(_showIntegrityWarning(check));
+                        }
+                      },
+                      onOpenUnverifiedCopy: _openUnverifiedCopy,
                       onRetryRunFailures: _busy || _setupBusy
                           ? null
                           : _retryLatestRunFailures,
@@ -1153,12 +1403,12 @@ bool get _demoSearchMode =>
 
 NotebookSearchResult _demoOpenAiSearchResult() {
   const query =
-      'Which backed-up records contain qPCR results and original payloads?';
+      'Which backed-up records contain qPCR results and original files?';
   const backupCreatedAt = '2026-05-14T09:00:00.000Z';
   return NotebookSearchResult(
     query: query,
     answer:
-        'The backed-up qPCR evidence is in Demo Immunology Notebook / Assays / qPCR run 001, which records the master-mix workflow, melt-curve review, and delayed IL6 amplification observation [1]. Original payload review is in Demo Immunology Notebook / Imaging and Attachments / Mixed file attachments, where the backup includes `qpcr_results.csv`, `amplicon.fasta`, `qc_report.pdf`, and `tiny_signal.png`; the run reports 15 of 15 original attachments verified [2].',
+        'The backed-up qPCR evidence is in Demo Immunology Notebook / Assays / qPCR run 001, which records the master-mix workflow, melt-curve review, and delayed IL6 amplification observation [1]. Original file review is in Demo Immunology Notebook / Imaging and Attachments / Mixed file attachments, where the backup includes `qpcr_results.csv`, `amplicon.fasta`, `qc_report.pdf`, and `tiny_signal.png`; the run reports 15 of 15 original attachments verified [2].',
     hits: [
       NotebookSearchHit(
         chunk: NotebookSearchChunk(
@@ -1311,249 +1561,232 @@ RenderNotebook _demoNotebook() {
   );
 }
 
-class _StatusStrip extends StatelessWidget {
-  const _StatusStrip({
+class _BackupHealthStrip extends StatelessWidget {
+  const _BackupHealthStrip({
     required this.status,
     required this.detail,
+    required this.setupReady,
+    required this.preflight,
+    required this.integrity,
+    required this.latestRun,
+    required this.selectedBackup,
     required this.busy,
+    required this.preflightBusy,
+    required this.auditBusy,
+    required this.onDetails,
+    required this.onRefresh,
+    required this.onExportAudit,
+    required this.onBackup,
   });
 
   final String status;
   final String? detail;
+  final bool setupReady;
+  final BackupPreflightReport? preflight;
+  final BackupIntegrityCheck? integrity;
+  final BackupRunManifest? latestRun;
+  final BackupRecord? selectedBackup;
   final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: colors.surfaceContainerHighest,
-      child: Row(
-        children: [
-          Icon(
-            busy ? Icons.sync : Icons.verified_user_outlined,
-            size: 18,
-            color: colors.primary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(status, maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (detail != null)
-                  Text(
-                    detail!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReadOnlyContractBanner extends StatelessWidget {
-  const _ReadOnlyContractBanner();
+  final bool preflightBusy;
+  final bool auditBusy;
+  final VoidCallback onDetails;
+  final VoidCallback onRefresh;
+  final VoidCallback? onExportAudit;
+  final VoidCallback? onBackup;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-      color: _nihBlueDark.withValues(alpha: 0.06),
-      child: Row(
-        children: [
-          Icon(Icons.lock_outline, color: colors.primary, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: RichText(
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              text: TextSpan(
-                style: textTheme.bodySmall?.copyWith(color: colors.onSurface),
-                children: [
-                  TextSpan(
-                    text: 'LabArchives read-only mode: ',
-                    style: textTheme.labelLarge?.copyWith(
-                      color: colors.primary,
-                    ),
-                  ),
-                  const TextSpan(
-                    text:
-                        'only login, user-access lookup, and notebook-backup endpoints are allowlisted. No add, update, delete, upload, or restore-to-LabArchives requests are sent.',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+    final blockers = preflight?.blockingChecks.toList() ?? const [];
+    final warnings = preflight?.warningChecks.toList() ?? const [];
+    final ownerWarning =
+        latestRun?.outcomes.any(
+          (outcome) => outcome.category == BackupFailureCategory.notOwner,
+        ) ??
+        false;
 
-class _PreflightPanel extends StatelessWidget {
-  const _PreflightPanel({
-    required this.report,
-    required this.busy,
-    required this.onRefresh,
-  });
+    late final IconData icon;
+    late final String title;
+    late final String message;
+    late final Color tone;
+    late final bool strong;
 
-  final BackupPreflightReport report;
-  final bool busy;
-  final VoidCallback onRefresh;
+    if (!setupReady) {
+      icon = Icons.manage_accounts_outlined;
+      title = 'Setup needed';
+      message =
+          'Connect a LabArchives GOV owner account to back up eligible notebooks.';
+      tone = _nihWarning;
+      strong = true;
+    } else if (integrity?.needsWarning == true) {
+      icon = Icons.warning_amber_outlined;
+      title = 'Local copy not verified';
+      message = 'Changed, missing, or unexpected files detected.';
+      tone = colors.error;
+      strong = true;
+    } else if (blockers.isNotEmpty) {
+      final first = blockers.first;
+      icon = Icons.error_outline;
+      title = 'Backup blocked';
+      message = '${first.title}: ${first.nextAction ?? first.detail}';
+      tone = colors.error;
+      strong = true;
+    } else if (ownerWarning) {
+      icon = Icons.admin_panel_settings_outlined;
+      title = 'Some visible notebooks are not backup-eligible';
+      message = 'Full-size backup is owner-only at NIH/NICHD.';
+      tone = _nihWarning;
+      strong = true;
+    } else if (integrity?.isVerified == true) {
+      icon = Icons.verified_user_outlined;
+      title = _verifiedLocalCopyTitle(selectedBackup);
+      message = detail ?? 'Read-only LabArchives access is active.';
+      tone = _nihSuccess;
+      strong = false;
+    } else if (warnings.isNotEmpty) {
+      final first = warnings.first;
+      icon = Icons.report_problem_outlined;
+      title = 'Backup readiness warning';
+      message = '${first.title}: ${first.nextAction ?? first.detail}';
+      tone = _nihWarning;
+      strong = false;
+    } else {
+      icon = Icons.lock_outline;
+      title = 'Read-only LabArchives access';
+      message = detail ?? status;
+      tone = colors.primary;
+      strong = false;
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final blockers = report.blockingChecks.toList();
-    final warnings = report.warningChecks.toList();
-    final color = blockers.isNotEmpty
-        ? colors.error
-        : warnings.isNotEmpty
-        ? _nihWarning
-        : _nihSuccess;
-    final icon = blockers.isNotEmpty
-        ? Icons.error_outline
-        : warnings.isNotEmpty
-        ? Icons.report_problem_outlined
-        : Icons.task_alt_outlined;
-    final focusCheck = blockers.isNotEmpty
-        ? blockers.first
-        : warnings.isNotEmpty
-        ? warnings.first
-        : report.checks.firstWhere(
-            (check) => check.status == PreflightStatus.pass,
-            orElse: () => report.checks.first,
-          );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: blockers.isNotEmpty ? 0.10 : 0.07),
-        border: Border(
-          bottom: BorderSide(color: color.withValues(alpha: 0.18)),
-        ),
+        color: tone.withValues(alpha: strong ? 0.12 : 0.07),
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final leading = busy
-              ? SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
-              : Icon(icon, color: color, size: 21);
-          final summary = Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      'Backup Center preflight',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelLarge?.copyWith(color: colors.onSurface),
-                    ),
-                    _StatusPill(label: report.summary, color: color),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  focusCheck.nextAction == null
-                      ? focusCheck.detail
-                      : '${focusCheck.detail} ${focusCheck.nextAction}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: strong ? 12 : 9,
             ),
-          );
-          final actions = Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              IconButton(
-                tooltip: 'Refresh preflight',
-                onPressed: busy ? null : onRefresh,
-                icon: const Icon(Icons.refresh_outlined),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _showDetails(context),
-                icon: const Icon(Icons.fact_check_outlined),
-                label: const Text('Details'),
-              ),
-            ],
-          );
-          final main = Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [leading, const SizedBox(width: 10), summary],
-          );
-          if (constraints.maxWidth < 700) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                main,
-                const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: actions),
-              ],
-            );
-          }
-          return Row(
-            children: [
-              leading,
-              const SizedBox(width: 10),
-              summary,
-              const SizedBox(width: 10),
-              actions,
-            ],
-          );
-        },
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final leading = busy || preflightBusy
+                    ? SizedBox.square(
+                        dimension: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: tone,
+                        ),
+                      )
+                    : Icon(icon, color: tone, size: strong ? 24 : 21);
+                final summary = Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            (strong
+                                    ? textTheme.titleSmall
+                                    : textTheme.labelLarge)
+                                ?.copyWith(color: tone),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        message,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                final actions = Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    IconButton(
+                      tooltip: 'Refresh protection checks',
+                      onPressed: busy || preflightBusy ? null : onRefresh,
+                      icon: const Icon(Icons.refresh_outlined),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: onDetails,
+                      icon: const Icon(Icons.fact_check_outlined),
+                      label: const Text('Details'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: auditBusy ? null : onExportAudit,
+                      icon: auditBusy
+                          ? const SizedBox.square(
+                              dimension: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.ios_share_outlined),
+                      label: const Text('Export Audit'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: onBackup,
+                      icon: const Icon(Icons.archive_outlined),
+                      label: const Text('Back Up Eligible Notebooks'),
+                    ),
+                  ],
+                );
+                final main = Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [leading, const SizedBox(width: 10), summary],
+                );
+                if (constraints.maxWidth < 820) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      main,
+                      const SizedBox(height: 10),
+                      Align(alignment: Alignment.centerRight, child: actions),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    leading,
+                    const SizedBox(width: 10),
+                    summary,
+                    const SizedBox(width: 12),
+                    actions,
+                  ],
+                );
+              },
+            ),
+          ),
+          if (busy || preflightBusy) LinearProgressIndicator(minHeight: 2),
+        ],
       ),
     );
   }
 
-  Future<void> _showDetails(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Backup Preflight'),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final check in report.checks)
-                  _PreflightCheckRow(check: check),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+  String _verifiedLocalCopyTitle(BackupRecord? backup) {
+    final record = backup;
+    final pieces = <String>['Verified local copy'];
+    if (record != null) {
+      pieces.add('Last backup ${record.createdAtLabel}');
+      final verification = record.contentVerification;
+      if (verification != null) {
+        pieces.add(
+          '${verification.verifiedOriginalAttachmentCount}/${verification.expectedOriginalAttachmentCount} originals',
+        );
+      }
+    }
+    pieces.add('Integrity sealed');
+    return pieces.join(' · ');
   }
 }
 
@@ -1649,183 +1882,6 @@ IconData _preflightIcon(PreflightStatus status) {
   };
 }
 
-class _IntegrityBanner extends StatelessWidget {
-  const _IntegrityBanner({
-    required this.check,
-    required this.busy,
-    required this.auditBusy,
-    required this.onExportAudit,
-  });
-
-  final BackupIntegrityCheck? check;
-  final bool busy;
-  final bool auditBusy;
-  final VoidCallback? onExportAudit;
-
-  @override
-  Widget build(BuildContext context) {
-    if (busy) {
-      return _banner(
-        context,
-        icon: Icons.fact_check_outlined,
-        title: 'Checking backup integrity...',
-        detail: 'Verifying SHA-256 hashes before rendering this backup.',
-        color: Theme.of(context).colorScheme.primary,
-      );
-    }
-    final result = check;
-    if (result == null) {
-      return const SizedBox.shrink();
-    }
-    final colors = Theme.of(context).colorScheme;
-    final color = result.isVerified ? _nihSuccess : colors.error;
-    return _banner(
-      context,
-      icon: result.isVerified
-          ? Icons.verified_outlined
-          : Icons.warning_amber_outlined,
-      title: result.statusTitle,
-      detail: result.summary,
-      color: color,
-      strong: result.needsWarning,
-      onDetails: () => _showIntegrityDetails(context, result),
-      onExportAudit: onExportAudit,
-    );
-  }
-
-  Widget _banner(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String detail,
-    required Color color,
-    bool strong = false,
-    VoidCallback? onDetails,
-    VoidCallback? onExportAudit,
-  }) {
-    final textTheme = Theme.of(context).textTheme;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: strong ? 12 : 7),
-      color: color.withValues(alpha: strong ? 0.16 : 0.08),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: strong ? 24 : 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: (strong ? textTheme.titleSmall : textTheme.labelLarge)
-                      ?.copyWith(color: color),
-                ),
-                Text(
-                  detail,
-                  maxLines: strong ? 3 : 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          if (onDetails != null) ...[
-            const SizedBox(width: 8),
-            if (onExportAudit != null)
-              TextButton.icon(
-                onPressed: auditBusy ? null : onExportAudit,
-                icon: auditBusy
-                    ? const SizedBox.square(
-                        dimension: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.ios_share_outlined, size: 16),
-                label: const Text('Audit'),
-              ),
-            IconButton(
-              tooltip: 'Integrity details',
-              onPressed: onDetails,
-              icon: const Icon(Icons.fact_check_outlined),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showIntegrityDetails(
-    BuildContext context,
-    BackupIntegrityCheck check,
-  ) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(check.statusTitle),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(check.summary),
-                const SizedBox(height: 12),
-                _IntegrityDetailLine(
-                  label: 'Manifest',
-                  value: check.manifestPath ?? 'missing',
-                ),
-                _IntegrityDetailLine(
-                  label: 'Local seal',
-                  value: check.hasLocalSeal ? 'present' : 'missing',
-                ),
-                _IntegrityDetailLine(
-                  label: 'Checked files',
-                  value:
-                      '${check.checkedFileCount} files, ${check.checkedBytes} bytes',
-                ),
-                if (check.manifestSha256 != null)
-                  _IntegrityDetailLine(
-                    label: 'Manifest SHA-256',
-                    value: check.manifestSha256!,
-                  ),
-                if (check.sealedManifestSha256 != null)
-                  _IntegrityDetailLine(
-                    label: 'Sealed SHA-256',
-                    value: check.sealedManifestSha256!,
-                  ),
-                if (check.changedFiles.isNotEmpty)
-                  _IntegrityPathList(
-                    title: 'Changed files',
-                    paths: check.changedFiles,
-                  ),
-                if (check.missingFiles.isNotEmpty)
-                  _IntegrityPathList(
-                    title: 'Missing files',
-                    paths: check.missingFiles,
-                  ),
-                if (check.extraFiles.isNotEmpty)
-                  _IntegrityPathList(
-                    title: 'Unexpected files',
-                    paths: check.extraFiles,
-                  ),
-                if (check.error != null)
-                  _IntegrityDetailLine(label: 'Error', value: check.error!),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _IntegrityDetailLine extends StatelessWidget {
   const _IntegrityDetailLine({required this.label, required this.value});
 
@@ -1841,32 +1897,6 @@ class _IntegrityDetailLine extends StatelessWidget {
         children: [
           Text(label, style: Theme.of(context).textTheme.labelLarge),
           SelectableText(value),
-        ],
-      ),
-    );
-  }
-}
-
-class _IntegrityPathList extends StatelessWidget {
-  const _IntegrityPathList({required this.title, required this.paths});
-
-  final String title;
-  final List<String> paths;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.labelLarge),
-          for (final path in paths.take(10)) SelectableText(path),
-          if (paths.length > 10)
-            Text(
-              '${paths.length - 10} more...',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
         ],
       ),
     );
@@ -1967,7 +1997,7 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
               ),
               const SizedBox(height: 18),
               Text(
-                'Production access is read-only. BenchVault uses these credentials for LabArchives authorization and notebook backup downloads only; it does not write entries, attachments, comments, or restored data to LabArchives.',
+                'Production access is read-only. BenchVault uses these credentials for LabArchives authorization and notebook backup downloads only; it does not write entries, attachments, comments, or copied files back to LabArchives.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 18),
@@ -2162,7 +2192,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
       minute: _minutesAfterMidnight % 60,
     );
     return AlertDialog(
-      title: const Text('Automatic Backup'),
+      title: const Text('Auto Backup While App Is Open'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
@@ -2170,7 +2200,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
           children: [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Enabled'),
+              title: const Text('Run auto backup while app is open'),
               value: _enabled,
               onChanged: (value) => setState(() => _enabled = value),
             ),
@@ -2441,180 +2471,239 @@ class _SearchPanel extends StatelessWidget {
         searchResult != null &&
         !searchResult.usedOpenAi &&
         searchResult.warning != null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    final maxPanelHeight = (MediaQuery.sizeOf(context).height * 0.34).clamp(
+      230.0,
+      360.0,
+    );
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxPanelHeight),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: _nihMist.withValues(alpha: 0.42),
+          border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  enabled: !busy,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => onSearch(),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    hintText: 'Ask across backed-up notebooks',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: openAiReady
-                    ? 'Natural-language search is enabled'
-                    : 'Add OpenAI key for natural-language search',
-                child: IconButton(
-                  onPressed: busy ? null : onSettings,
-                  icon: Icon(
-                    openAiReady
-                        ? Icons.psychology_alt
-                        : Icons.psychology_alt_outlined,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              FilledButton.icon(
-                onPressed: busy ? null : onSearch,
-                icon: busy
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.manage_search),
-                label: const Text('Search'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SegmentedButton<NotebookSearchScope>(
-                segments: const [
-                  ButtonSegment(
-                    value: NotebookSearchScope.all,
-                    icon: Icon(Icons.all_inbox_outlined, size: 16),
-                    label: Text('All'),
-                  ),
-                  ButtonSegment(
-                    value: NotebookSearchScope.pageText,
-                    icon: Icon(Icons.notes_outlined, size: 16),
-                    label: Text('Text'),
-                  ),
-                  ButtonSegment(
-                    value: NotebookSearchScope.attachments,
-                    icon: Icon(Icons.attach_file, size: 16),
-                    label: Text('Files'),
-                  ),
-                  ButtonSegment(
-                    value: NotebookSearchScope.comments,
-                    icon: Icon(Icons.comment_outlined, size: 16),
-                    label: Text('Comments'),
-                  ),
-                ],
-                selected: {scope},
-                onSelectionChanged: busy
-                    ? null
-                    : (selection) => onScopeChanged(selection.first),
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              ),
-              FilterChip(
-                avatar: const Icon(Icons.format_quote_outlined, size: 16),
-                label: const Text('Exact phrase'),
-                selected: exactPhrase,
-                onSelected: busy ? null : onExactPhraseChanged,
-              ),
-              FilterChip(
-                avatar: const Icon(Icons.verified_outlined, size: 16),
-                label: const Text('Verified only'),
-                selected: verifiedOnly,
-                onSelected: busy ? null : onVerifiedOnlyChanged,
-              ),
-            ],
-          ),
-          if (searchResult != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(
-                  searchResult.usedOpenAi
-                      ? Icons.auto_awesome
-                      : isFallback
-                      ? Icons.travel_explore
-                      : Icons.manage_search_outlined,
-                  size: 16,
-                  color: colors.primary,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  searchResult.usedOpenAi
-                      ? 'OpenAI answer'
-                      : isFallback
-                      ? 'Local fuzzy fallback'
-                      : 'Local fuzzy results',
-                  style: textTheme.labelMedium?.copyWith(color: colors.primary),
-                ),
-                if (searchResult.warning != null) ...[
-                  const SizedBox(width: 10),
+              Row(
+                children: [
                   Expanded(
-                    child: Text(
-                      searchResult.warning!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.bodySmall?.copyWith(color: colors.error),
+                    child: TextField(
+                      controller: controller,
+                      enabled: !busy,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => onSearch(),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        hintText: 'Ask across backed-up notebooks',
+                        prefixIcon: Icon(Icons.search),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: openAiReady
+                        ? 'Natural-language search is enabled'
+                        : 'Add OpenAI key for natural-language search',
+                    child: IconButton.filledTonal(
+                      onPressed: busy ? null : onSettings,
+                      icon: Icon(
+                        openAiReady
+                            ? Icons.psychology_alt
+                            : Icons.psychology_alt_outlined,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton.icon(
+                    onPressed: busy ? null : onSearch,
+                    icon: busy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.manage_search),
+                    label: const Text('Search'),
+                  ),
                 ],
-              ],
-            ),
-            const SizedBox(height: 6),
-            if (!searchResult.filters.isDefault) ...[
-              Text(
-                'Filters: ${searchResult.filters.summary}',
-                style: textTheme.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
               ),
-              const SizedBox(height: 5),
-            ],
-            SelectableText(searchResult.answer),
-            if (searchResult.hits.isNotEmpty) ...[
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: searchResult.hits
-                    .take(6)
-                    .map(
-                      (hit) => ActionChip(
-                        avatar: const Icon(Icons.article_outlined, size: 16),
-                        label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 240),
-                          child: Text(
-                            hit.chunk.path,
-                            overflow: TextOverflow.ellipsis,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _SearchModeBadge(openAiReady: openAiReady),
+                  SegmentedButton<NotebookSearchScope>(
+                    segments: const [
+                      ButtonSegment(
+                        value: NotebookSearchScope.all,
+                        icon: Icon(Icons.all_inbox_outlined, size: 16),
+                        label: Text('All'),
+                      ),
+                      ButtonSegment(
+                        value: NotebookSearchScope.pageText,
+                        icon: Icon(Icons.notes_outlined, size: 16),
+                        label: Text('Text'),
+                      ),
+                      ButtonSegment(
+                        value: NotebookSearchScope.attachments,
+                        icon: Icon(Icons.attach_file, size: 16),
+                        label: Text('Files'),
+                      ),
+                      ButtonSegment(
+                        value: NotebookSearchScope.comments,
+                        icon: Icon(Icons.comment_outlined, size: 16),
+                        label: Text('Comments'),
+                      ),
+                    ],
+                    selected: {scope},
+                    onSelectionChanged: busy
+                        ? null
+                        : (selection) => onScopeChanged(selection.first),
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                  FilterChip(
+                    avatar: const Icon(Icons.format_quote_outlined, size: 16),
+                    label: const Text('Exact phrase'),
+                    selected: exactPhrase,
+                    onSelected: busy ? null : onExactPhraseChanged,
+                  ),
+                  FilterChip(
+                    avatar: const Icon(Icons.verified_outlined, size: 16),
+                    label: const Text('Verified backups only'),
+                    selected: verifiedOnly,
+                    onSelected: busy ? null : onVerifiedOnlyChanged,
+                  ),
+                ],
+              ),
+              if (searchResult != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      searchResult.usedOpenAi
+                          ? Icons.auto_awesome
+                          : isFallback
+                          ? Icons.travel_explore
+                          : Icons.manage_search_outlined,
+                      size: 16,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      searchResult.usedOpenAi
+                          ? 'OpenAI answer'
+                          : isFallback
+                          ? 'Local search fallback'
+                          : 'Local search results',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: colors.primary,
+                      ),
+                    ),
+                    if (searchResult.warning != null) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          searchResult.warning!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colors.error,
                           ),
                         ),
-                        onPressed: () => onSelectHit(hit),
                       ),
-                    )
-                    .toList(),
-              ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (!searchResult.filters.isDefault) ...[
+                  Text(
+                    'Filters: ${searchResult.filters.summary}',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                ],
+                SelectableText(searchResult.answer),
+                if (searchResult.hits.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: searchResult.hits
+                        .take(6)
+                        .map(
+                          (hit) => ActionChip(
+                            avatar: const Icon(
+                              Icons.article_outlined,
+                              size: 16,
+                            ),
+                            label: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 240),
+                              child: Text(
+                                hit.chunk.path,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            onPressed: () => onSelectHit(hit),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchModeBadge extends StatelessWidget {
+  const _SearchModeBadge({required this.openAiReady});
+
+  final bool openAiReady;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = openAiReady ? colors.primary : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: openAiReady ? 0.10 : 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              openAiReady ? Icons.psychology_alt : Icons.manage_search_outlined,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              openAiReady ? 'OpenAI search enabled' : 'Local search',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -2630,10 +2719,14 @@ class _WideLayout extends StatelessWidget {
     required this.notebook,
     required this.selectedNode,
     required this.selectedSearchHit,
+    required this.integrityCheck,
+    required this.allowUnverifiedCopy,
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
     required this.onDownloadAttachment,
+    required this.onReviewIntegrity,
+    required this.onOpenUnverifiedCopy,
     required this.onRetryRunFailures,
   });
 
@@ -2645,49 +2738,89 @@ class _WideLayout extends StatelessWidget {
   final RenderNotebook? notebook;
   final RenderNode? selectedNode;
   final NotebookSearchHit? selectedSearchHit;
+  final BackupIntegrityCheck? integrityCheck;
+  final bool allowUnverifiedCopy;
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
   final ValueChanged<RenderPart> onDownloadAttachment;
+  final VoidCallback onReviewIntegrity;
+  final VoidCallback onOpenUnverifiedCopy;
   final VoidCallback? onRetryRunFailures;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 300,
-          child: _BackupList(
-            notebooks: notebooks,
-            backups: backups,
-            latestRun: latestRun,
-            selected: selectedBackup,
-            onSelect: onSelectBackup,
-            onRetryRunFailures: onRetryRunFailures,
-            log: log,
-          ),
+    return ColoredBox(
+      color: _nihSurface,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 312,
+              child: _WorkspacePane(
+                child: _BackupList(
+                  notebooks: notebooks,
+                  backups: backups,
+                  latestRun: latestRun,
+                  selected: selectedBackup,
+                  onSelect: onSelectBackup,
+                  onRetryRunFailures: onRetryRunFailures,
+                  log: log,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 342,
+              child: _WorkspacePane(
+                child: _NotebookTree(
+                  notebook: notebook,
+                  selectedNode: selectedNode,
+                  onSelectNode: onSelectNode,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _WorkspacePane(
+                child: _EntryViewer(
+                  service: service,
+                  backup: selectedBackup,
+                  notebook: notebook,
+                  node: selectedNode,
+                  selectedSearchHit: selectedSearchHit,
+                  integrityCheck: integrityCheck,
+                  allowUnverifiedCopy: allowUnverifiedCopy,
+                  onDownloadAttachment: onDownloadAttachment,
+                  onReviewIntegrity: onReviewIntegrity,
+                  onOpenUnverifiedCopy: onOpenUnverifiedCopy,
+                ),
+              ),
+            ),
+          ],
         ),
-        const VerticalDivider(width: 1),
-        SizedBox(
-          width: 330,
-          child: _NotebookTree(
-            notebook: notebook,
-            selectedNode: selectedNode,
-            onSelectNode: onSelectNode,
-          ),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: _EntryViewer(
-            service: service,
-            backup: selectedBackup,
-            notebook: notebook,
-            node: selectedNode,
-            selectedSearchHit: selectedSearchHit,
-            onDownloadAttachment: onDownloadAttachment,
-          ),
-        ),
-      ],
+      ),
+    );
+  }
+}
+
+class _WorkspacePane extends StatelessWidget {
+  const _WorkspacePane({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: child,
     );
   }
 }
@@ -2702,10 +2835,14 @@ class _NarrowLayout extends StatelessWidget {
     required this.notebook,
     required this.selectedNode,
     required this.selectedSearchHit,
+    required this.integrityCheck,
+    required this.allowUnverifiedCopy,
     required this.log,
     required this.onSelectBackup,
     required this.onSelectNode,
     required this.onDownloadAttachment,
+    required this.onReviewIntegrity,
+    required this.onOpenUnverifiedCopy,
     required this.onRetryRunFailures,
   });
 
@@ -2717,10 +2854,14 @@ class _NarrowLayout extends StatelessWidget {
   final RenderNotebook? notebook;
   final RenderNode? selectedNode;
   final NotebookSearchHit? selectedSearchHit;
+  final BackupIntegrityCheck? integrityCheck;
+  final bool allowUnverifiedCopy;
   final List<String> log;
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
   final ValueChanged<RenderPart> onDownloadAttachment;
+  final VoidCallback onReviewIntegrity;
+  final VoidCallback onOpenUnverifiedCopy;
   final VoidCallback? onRetryRunFailures;
 
   @override
@@ -2731,7 +2872,7 @@ class _NarrowLayout extends StatelessWidget {
         children: [
           const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Backups'),
+              Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Protected'),
               Tab(icon: Icon(Icons.account_tree_outlined), text: 'Pages'),
               Tab(icon: Icon(Icons.article_outlined), text: 'Viewer'),
             ],
@@ -2759,7 +2900,11 @@ class _NarrowLayout extends StatelessWidget {
                   notebook: notebook,
                   node: selectedNode,
                   selectedSearchHit: selectedSearchHit,
+                  integrityCheck: integrityCheck,
+                  allowUnverifiedCopy: allowUnverifiedCopy,
                   onDownloadAttachment: onDownloadAttachment,
+                  onReviewIntegrity: onReviewIntegrity,
+                  onOpenUnverifiedCopy: onOpenUnverifiedCopy,
                 ),
               ],
             ),
@@ -2799,24 +2944,33 @@ class _BackupList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _PaneHeader(icon: Icons.inventory_2_outlined, title: 'Backups'),
-        if (latestRun != null)
-          _BackupRunSummary(
-            run: latestRun!,
-            onRetryFailures: onRetryRunFailures,
-          ),
+        const _PaneHeader(
+          icon: Icons.inventory_2_outlined,
+          title: 'Protected Notebooks',
+        ),
         Expanded(
-          child: backups.isEmpty && notebookStatuses.isEmpty
+          child:
+              backups.isEmpty &&
+                  notebookStatuses.isEmpty &&
+                  latestRun == null &&
+                  log.isEmpty
               ? const _EmptyState(
                   icon: Icons.archive_outlined,
                   text:
-                      'No local backups yet. Use Back Up Now to create JSON-viewable archives.',
+                      'No protected notebook backups yet. Use Back Up Eligible Notebooks to create local read-only copies.',
                 )
               : ListView(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
                   children: [
+                    if (latestRun != null) ...[
+                      _BackupRunSummary(
+                        run: latestRun!,
+                        onRetryFailures: onRetryRunFailures,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (notebookStatuses.isNotEmpty) ...[
-                      const _BackupSectionLabel('Notebook Status'),
+                      const _BackupSectionLabel('Notebook Protection'),
                       for (final status in notebookStatuses) ...[
                         _NotebookBackupStatusCard(
                           status: status,
@@ -2828,7 +2982,7 @@ class _BackupList extends StatelessWidget {
                     ],
                     if (backups.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      const _BackupSectionLabel('Local Copies'),
+                      const _BackupSectionLabel('Backup Copies'),
                       for (final backup in backups)
                         _BackupRecordTile(
                           backup: backup,
@@ -2838,35 +2992,32 @@ class _BackupList extends StatelessWidget {
                     ] else if (notebookStatuses.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'No local backup copies yet.',
+                        'No backup copies yet.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
+                    ],
+                    if (log.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      const _BackupSectionLabel('Run Log'),
+                      for (final item in log.take(80))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            item,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                     ],
                   ],
                 ),
         ),
-        if (log.isNotEmpty) ...[
-          const Divider(height: 1),
-          SizedBox(
-            height: 130,
-            child: ListView.builder(
-              reverse: true,
-              itemCount: log.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                child: Text(
-                  log[index],
-                  style: Theme.of(context).textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -2905,13 +3056,16 @@ class _NotebookBackupStatusCard extends StatelessWidget {
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(8),
       side: BorderSide(
-        color: selected ? colors.primary : tone.withValues(alpha: 0.26),
+        color: selected ? colors.primary : colors.outlineVariant,
+        width: selected ? 1.4 : 1,
       ),
     );
     return Material(
       color: selected
-          ? colors.primaryContainer.withValues(alpha: 0.42)
+          ? colors.primaryContainer.withValues(alpha: 0.55)
           : colors.surface,
+      elevation: selected ? 1 : 0,
+      shadowColor: _nihBlueDark.withValues(alpha: 0.12),
       shape: shape,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2943,7 +3097,9 @@ class _NotebookBackupStatusCard extends StatelessWidget {
                 status.detail,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -2969,9 +3125,12 @@ class _NotebookBackupStatusCard extends StatelessWidget {
                       color: _nihSuccess,
                     )
                   else if (status.latestRecord != null)
-                    _StatusPill(label: 'legacy archive', color: _nihWarning),
+                    _StatusPill(
+                      label: 'Older backup: integrity seal unavailable',
+                      color: _nihWarning,
+                    ),
                   if (status.latestRecord?.integrityManifestPath != null)
-                    _StatusPill(label: 'sealed', color: _nihSuccess),
+                    _StatusPill(label: 'Integrity sealed', color: _nihSuccess),
                 ],
               ),
             ],
@@ -2999,17 +3158,28 @@ class _BackupRecordTile extends StatelessWidget {
       selected: selected,
       selectedTileColor: Theme.of(
         context,
-      ).colorScheme.primaryContainer.withValues(alpha: 0.35),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-      leading: const Icon(Icons.folder_zip_outlined),
+      ).colorScheme.primaryContainer.withValues(alpha: 0.48),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: selected
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.45)
+              : Colors.transparent,
+        ),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      leading: Icon(
+        selected ? Icons.folder_special_outlined : Icons.folder_zip_outlined,
+      ),
       title: Text(
         backup.notebookName,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        '${backup.createdAtLabel} · ${backup.pageCount} pages · ${backup.contentVerification?.summary ?? 'legacy archive'}',
+        '${backup.createdAtLabel} · ${backup.pageCount} pages · ${backup.contentVerification?.summary ?? 'Older backup: integrity seal unavailable'}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
       onTap: () => onSelect(backup),
     );
@@ -3056,7 +3226,7 @@ class _NotebookBackupStatus {
       return '${outcome.message} ${outcome.nextAction ?? prior}';
     }
     if (record != null) {
-      return 'Last backup ${record.createdAtLabel} · ${record.pageCount} pages · ${record.contentVerification?.summary ?? 'legacy archive'}.';
+      return 'Last backup ${record.createdAtLabel} · ${record.pageCount} pages · ${record.contentVerification?.summary ?? 'Older backup: integrity seal unavailable'}.';
     }
     return 'This notebook is in the local notebook index, but no backup record has been created yet.';
   }
@@ -3564,18 +3734,30 @@ class _TreeNodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final children = notebook.childrenOf(node.id);
     final selected = selectedNode?.id == node.id;
+    final colors = Theme.of(context).colorScheme;
     final tile = ListTile(
       dense: true,
       selected: selected,
+      selectedTileColor: colors.primaryContainer.withValues(alpha: 0.55),
       contentPadding: EdgeInsets.only(left: 12 + depth * 18, right: 8),
       leading: Icon(
         node.isPage ? Icons.article_outlined : Icons.folder_outlined,
         size: 19,
+        color: selected ? colors.primary : null,
       ),
-      title: Text(node.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        node.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: selected
+            ? Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: colors.primary)
+            : null,
+      ),
       subtitle: node.isPage
           ? Text(
-              '${node.parts.length} part${node.parts.length == 1 ? '' : 's'}',
+              '${node.parts.length} item${node.parts.length == 1 ? '' : 's'}',
             )
           : null,
       onTap: node.isPage ? () => onSelectNode(node) : null,
@@ -3610,7 +3792,11 @@ class _EntryViewer extends StatelessWidget {
     required this.notebook,
     required this.node,
     required this.selectedSearchHit,
+    required this.integrityCheck,
+    required this.allowUnverifiedCopy,
     required this.onDownloadAttachment,
+    required this.onReviewIntegrity,
+    required this.onOpenUnverifiedCopy,
   });
 
   final BackupService service;
@@ -3618,7 +3804,11 @@ class _EntryViewer extends StatelessWidget {
   final RenderNotebook? notebook;
   final RenderNode? node;
   final NotebookSearchHit? selectedSearchHit;
+  final BackupIntegrityCheck? integrityCheck;
+  final bool allowUnverifiedCopy;
   final ValueChanged<RenderPart> onDownloadAttachment;
+  final VoidCallback onReviewIntegrity;
+  final VoidCallback onOpenUnverifiedCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -3632,44 +3822,208 @@ class _EntryViewer extends StatelessWidget {
     final landingHit = selectedSearchHit?.chunk.nodeId == selected.id
         ? selectedSearchHit
         : null;
+    final unverified = integrityCheck?.needsWarning == true;
+    final blockUnverified = unverified && !allowUnverifiedCopy;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _PaneHeader(
           icon: Icons.article_outlined,
           title: selected.title,
-          trailing: Text(_pageCountSummary(selected)),
+          trailing: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (unverified && allowUnverifiedCopy)
+                const _UnverifiedMarker(compact: true),
+              Text(_pageCountSummary(selected)),
+            ],
+          ),
         ),
         _PageContextBar(notebook: notebook!, node: selected),
         if (landingHit != null) _SearchLandingBanner(hit: landingHit),
         Expanded(
-          child: selected.parts.isEmpty
+          child: blockUnverified
+              ? _UnverifiedBackupPanel(
+                  check: integrityCheck!,
+                  onReviewDetails: onReviewIntegrity,
+                  onOpenUnverifiedCopy: onOpenUnverifiedCopy,
+                )
+              : selected.parts.isEmpty
               ? const _EmptyState(
                   icon: Icons.notes_outlined,
-                  text: 'This backed-up page has no rendered entry parts.',
+                  text: 'This backed-up page has no rendered items.',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
                   itemCount: selected.parts.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     if (index == 0) {
-                      return _PageOutline(parts: selected.parts);
+                      return _ViewerContentWidth(
+                        child: _PageOutline(parts: selected.parts),
+                      );
                     }
-                    return _EntryPartView(
-                      service: service,
-                      backup: backup,
-                      part: selected.parts[index - 1],
-                      highlight: _partMatchesSearchHit(
-                        selected.parts[index - 1],
-                        landingHit,
+                    return _ViewerContentWidth(
+                      child: _EntryPartView(
+                        service: service,
+                        backup: backup,
+                        part: selected.parts[index - 1],
+                        highlight: _partMatchesSearchHit(
+                          selected.parts[index - 1],
+                          landingHit,
+                        ),
+                        unverified: unverified && allowUnverifiedCopy,
+                        onDownloadAttachment: onDownloadAttachment,
                       ),
-                      onDownloadAttachment: onDownloadAttachment,
                     );
                   },
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _UnverifiedBackupPanel extends StatelessWidget {
+  const _UnverifiedBackupPanel({
+    required this.check,
+    required this.onReviewDetails,
+    required this.onOpenUnverifiedCopy,
+  });
+
+  final BackupIntegrityCheck check;
+  final VoidCallback onReviewDetails;
+  final VoidCallback onOpenUnverifiedCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.errorContainer.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: colors.error.withValues(alpha: 0.32)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_outlined,
+                      color: colors.error,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Local copy not verified',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(color: colors.error),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Protected files changed, are missing, or were added after the integrity seal was created. Open this copy only for review, not as a verified record.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            check.summary,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: onReviewDetails,
+                      icon: const Icon(Icons.fact_check_outlined),
+                      label: const Text('Review Details'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: onOpenUnverifiedCopy,
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: const Text('Open Unverified Copy'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnverifiedMarker extends StatelessWidget {
+  const _UnverifiedMarker({this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.error;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 7 : 8,
+          vertical: compact ? 4 : 5,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.warning_amber_outlined, size: 15, color: color),
+            const SizedBox(width: 5),
+            Text(
+              compact ? 'UNVERIFIED' : 'UNVERIFIED LOCAL COPY',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewerContentWidth extends StatelessWidget {
+  const _ViewerContentWidth({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: child,
+      ),
     );
   }
 }
@@ -3808,9 +4162,9 @@ class _PageOutline extends StatelessWidget {
       ..sort((a, b) => a.position.compareTo(b.position));
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
+        color: _nihBlueLightest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.outlineVariant),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.14)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -3885,6 +4239,7 @@ class _EntryPartView extends StatelessWidget {
     required this.backup,
     required this.part,
     required this.highlight,
+    required this.unverified,
     required this.onDownloadAttachment,
   });
 
@@ -3892,6 +4247,7 @@ class _EntryPartView extends StatelessWidget {
   final BackupRecord? backup;
   final RenderPart part;
   final bool highlight;
+  final bool unverified;
   final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
@@ -3931,8 +4287,12 @@ class _EntryPartView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
+                  if (unverified) ...[
+                    const _UnverifiedMarker(compact: true),
+                    const SizedBox(width: 8),
+                  ],
                   IconButton.filledTonal(
-                    tooltip: 'Restore original attachment to a local folder',
+                    tooltip: 'Save original attachment to a local folder',
                     onPressed: () => onDownloadAttachment(part),
                     icon: const Icon(Icons.download_outlined),
                   ),
@@ -3955,8 +4315,8 @@ class _EntryPartView extends StatelessWidget {
                         ? Icons.verified_outlined
                         : Icons.report_problem_outlined,
                     label: hasOriginal
-                        ? 'Original payload indexed'
-                        : 'Original payload not indexed',
+                        ? 'Original file preserved'
+                        : 'Original file not found',
                     color: hasOriginal
                         ? _nihSuccess
                         : Theme.of(context).colorScheme.error,
@@ -4032,7 +4392,13 @@ class _EntryPartView extends StatelessWidget {
               children: [
                 Icon(isHeading ? Icons.title : Icons.notes_outlined, size: 18),
                 const SizedBox(width: 8),
-                Text(part.kindLabel, style: textTheme.labelMedium),
+                Text(
+                  part.kindLabel,
+                  style: textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -4072,8 +4438,15 @@ class _EntryPartView extends StatelessWidget {
       ),
       borderRadius: BorderRadius.circular(8),
       color: highlight
-          ? colors.primaryContainer.withValues(alpha: 0.22)
+          ? colors.primaryContainer.withValues(alpha: 0.28)
           : colors.surface,
+      boxShadow: [
+        BoxShadow(
+          color: _nihBlueDark.withValues(alpha: highlight ? 0.08 : 0.04),
+          blurRadius: highlight ? 16 : 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 }
@@ -4178,7 +4551,7 @@ int _commentCount(RenderNode node) {
 
 String _pageCountSummary(RenderNode node) {
   final count = node.parts.length;
-  return '$count part${count == 1 ? '' : 's'}';
+  return '$count item${count == 1 ? '' : 's'}';
 }
 
 String _formatDuration(Duration duration) {
@@ -4305,7 +4678,7 @@ class _AttachmentPreview extends StatelessWidget {
     final record = backup;
     if (record == null) {
       return const _AttachmentPreviewMessage(
-        message: 'Select a backup record to preview the original payload.',
+        message: 'Select a backup record to preview the original file.',
       );
     }
     return FutureBuilder<File?>(
@@ -4321,7 +4694,7 @@ class _AttachmentPreview extends StatelessWidget {
         if (file == null || !file.existsSync()) {
           return const _AttachmentPreviewMessage(
             message:
-                'Original payload is not available for inline preview in this local backup.',
+                'Original file is not available for inline preview in this local backup.',
           );
         }
         return switch (support.previewMode) {
@@ -4437,16 +4810,16 @@ class _InlineJupyterPreview extends StatelessWidget {
 
   String _jupyterSummary(String? raw) {
     if (raw == null || raw.trim().isEmpty) {
-      return 'Jupyter notebook payload is empty or unavailable.';
+      return 'Jupyter notebook file is empty or unavailable.';
     }
     final Object? decoded;
     try {
       decoded = jsonDecode(raw);
     } catch (_) {
-      return 'Jupyter notebook payload could not be parsed locally. Restore the original .ipynb for inspection.';
+      return 'Jupyter notebook file could not be parsed locally. Save the original .ipynb for inspection.';
     }
     if (decoded is! Map<String, Object?>) {
-      return 'Jupyter notebook payload is not a recognized notebook object.';
+      return 'Jupyter notebook file is not a recognized notebook object.';
     }
     final cells = (decoded['cells'] as List<Object?>? ?? const []);
     var markdownCells = 0;
@@ -4651,16 +5024,31 @@ class _PaneHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      color: colors.surfaceContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _nihMist.withValues(alpha: 0.66),
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: colors.primary),
-          const SizedBox(width: 8),
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
+            ),
+            child: Icon(icon, size: 17, color: colors.primary),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
-              style: Theme.of(context).textTheme.titleSmall,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: _nihBlueDark,
+                fontWeight: FontWeight.w700,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

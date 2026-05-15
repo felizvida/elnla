@@ -12,8 +12,8 @@ work.
 - BenchVault is a backup and offline-viewing app. It is not a LabArchives
   editor, synchronization client, migration tool, or disaster-recovery restore
   system.
-- The production app does not write restored data back to LabArchives. Restoring
-  an attachment means copying a backed-up original payload to a local folder.
+- The production app does not write copied data back to LabArchives. `Save
+  Original` means copying a backed-up original file to a local folder.
 - The app currently targets LabArchives GOV at `api.labarchives-gov.com`. It is
   not configured for other LabArchives regions or deployments.
 - The app does not implement LabArchives Scheduler or Inventory backup.
@@ -117,12 +117,13 @@ work.
 
 ## Attachments
 
-- BenchVault preserves and restores original payloads when the full-size backup
+- BenchVault preserves original files when the full-size backup
   archive includes them, and records attachment version and thumbnail paths when
-  the backup exposes them. It previews only safe local formats inline.
+  the backup exposes them. It previews only safe local formats inline and can
+  save originals to a chosen local folder.
 - Office documents, PDFs, TIFF images, SnapGene/Geneious files, binary chemical
   drawings, media, archives, and custom instrument exports are recognized but
-  generally opened outside BenchVault after local restore.
+  generally opened outside BenchVault after saving a local copy.
 - The app does not parse text out of Office documents, PDFs, images, SnapGene
   binaries, media, compressed archives, or proprietary instrument files for
   search.
@@ -130,15 +131,15 @@ work.
   execution environment.
 - The viewer does not execute scripts, macros, embedded HTML, remote resources,
   notebooks, or instrument workflows from backed-up attachments.
-- Restored attachment filenames are sanitized and made unique in the selected
-  destination folder, so the restored local filename may differ slightly from
-  the original path when needed to avoid overwriting.
+- Saved original filenames are sanitized and made unique in the selected
+  destination folder, so the local filename may differ slightly from the
+  original path when needed to avoid overwriting.
 
 ## Search
 
-- Local fallback search is fuzzy lexical search. It uses term relevance, phrase
-  boosts, typo-tolerant matching, and character n-gram similarity, but it is not
-  a full semantic vector-search system.
+- Local search uses lexical relevance, phrase boosts, typo-tolerant matching,
+  and character n-gram similarity, but it is not a full semantic vector-search
+  system.
 - OpenAI-powered search sends selected notebook excerpts and attachment metadata
   to OpenAI when an API key is configured. Users should not enable it for
   content that policy forbids sending to external services.
@@ -170,7 +171,7 @@ work.
 - Backup metadata paths are treated as untrusted. BenchVault rejects absolute
   paths, drive-letter paths, UNC-style paths, `..` traversal, and symlink targets
   that resolve outside configured backup folders. This protects the viewer and
-  attachment restore flow from malformed local metadata, but it does not protect
+  Save Original flow from malformed local metadata, but it does not protect
   against a fully compromised operating system or malicious replacement of the
   application itself.
 - Derived files such as `render_notebook.json`, readable Markdown, and search
@@ -205,7 +206,7 @@ work.
 
 ## Scheduling
 
-- Automatic backups run only while the BenchVault app is open. There is no
+- Auto backups run only while the BenchVault app is open. There is no
   production macOS LaunchAgent, Windows Task Scheduler integration, iPad
   background task, or server-side scheduler. The repository includes an
   experimental macOS LaunchAgent installer that runs the local backup tool, but
@@ -237,7 +238,7 @@ work.
   generated test data. It cannot cover every LabArchives widget, institutional
   configuration, legacy notebook, or proprietary instrument payload.
 - Automated tests cover parsing, settings, local search, integrity checks,
-  attachment restore behavior, and read-only endpoint guardrails. They do not
+  Save Original behavior, and read-only endpoint guardrails. They do not
   exercise every real LabArchives server behavior on every run.
 - Screenshots use demo data and should not be treated as evidence that a real
   notebook backup was complete.
