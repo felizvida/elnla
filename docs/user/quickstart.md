@@ -1,5 +1,5 @@
 ---
-title: "ELNLA Quickstart for Biologists"
+title: "ELNLA Quickstart"
 subtitle: "Back up LabArchives GOV notebooks and read them offline"
 author: "ELNLA"
 date: "May 14, 2026"
@@ -8,7 +8,7 @@ fontsize: 11pt
 colorlinks: true
 ---
 
-# ELNLA Quickstart for Biologists
+# ELNLA Quickstart
 
 ELNLA is a desktop app for backing up LabArchives GOV electronic lab notebooks
 and reading those backups later in a read-only viewer. It is designed for lab

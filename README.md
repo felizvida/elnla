@@ -66,8 +66,8 @@ docs/
   developer/
     labarchives_gov_api_reference.md
   user/
-    ELNLA_Quickstart_for_Biologists.pdf
-    quickstart_for_biologists.md
+    ELNLA_Quickstart.pdf
+    quickstart.md
 lib/
   main.dart
   src/
@@ -78,8 +78,8 @@ tool/
 
 ## Documentation
 
-- [Biologist quickstart PDF](docs/user/ELNLA_Quickstart_for_Biologists.pdf)
-- [Biologist quickstart source](docs/user/quickstart_for_biologists.md)
+- [Quickstart PDF](docs/user/ELNLA_Quickstart.pdf)
+- [Quickstart source](docs/user/quickstart.md)
 - [LabArchives GOV API working reference](docs/developer/labarchives_gov_api_reference.md)
 - [Documentation index](docs/README.md)
 

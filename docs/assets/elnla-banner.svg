@@ -19,7 +19,7 @@
   <g transform="translate(92 78)">
     <text x="0" y="0" fill="#ffffff" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="0">ELNLA</text>
     <text x="4" y="55" fill="#d7fff4" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="600">LabArchives GOV backup and read-only notebook viewer</text>
-    <text x="4" y="112" fill="#f8fffc" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="23" font-weight="500">Owner-only full-size archives • Original attachment verification • Biologist-friendly offline review</text>
+    <text x="4" y="112" fill="#f8fffc" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="23" font-weight="500">Owner-only full-size archives • Original attachment verification • Lab-ready offline review</text>
   </g>
 
   <g transform="translate(870 70)" filter="url(#softShadow)">

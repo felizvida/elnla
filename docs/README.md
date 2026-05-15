@@ -7,9 +7,9 @@ ignored folders.
 
 ## User Documents
 
-- `user/ELNLA_Quickstart_for_Biologists.pdf`: printable quickstart for
-  biologists and lab notebook owners.
-- `user/quickstart_for_biologists.md`: source for the quickstart PDF.
+- `user/ELNLA_Quickstart.pdf`: printable quickstart for notebook owners and
+  records staff.
+- `user/quickstart.md`: source for the quickstart PDF.
 
 ## Developer Documents
 
