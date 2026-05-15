@@ -34,6 +34,7 @@ __pycache__/
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+dist/
 .idea/
 *.iml
 

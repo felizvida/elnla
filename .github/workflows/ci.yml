@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test And Safety Gates
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Dart format
+        run: dart format --set-exit-if-changed lib test tool
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Flutter analyzer
+        run: flutter analyze
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: Secret and local-path scan
+        run: |
+          home_path_pattern='/'"Users"'/'
+          private_path_pattern='/'"private"'/'
+          scan_pattern="${home_path_pattern}|${private_path_pattern}|LABARCHIVES_GOV_(LOGIN_ID|ACCESS_KEY)=[A-Za-z0-9_+/=-]{20,}|OPENAI_API_KEY=sk-[A-Za-z0-9_-]+|[A-Za-z0-9._%+-]+@nih\\.gov"
+          ! rg -n "$scan_pattern" .gitignore README.md docs lib scripts test tool pubspec.yaml
+          if [[ -f docs/user/BenchVault_Quickstart.pdf ]]; then
+            ! strings docs/user/BenchVault_Quickstart.pdf | rg -n "$scan_pattern"
+          fi
+
+      - name: Seeder write-lock dry run
+        run: python3 scripts/labarchives_seed_bio_test_notebook.py --dry-run
+
+      - name: macOS build
+        run: flutter build macos

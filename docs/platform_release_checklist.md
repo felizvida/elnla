@@ -13,8 +13,11 @@ checks pass:
 - `git diff --check`
 - secret and absolute-path scan across tracked public files
 - synthetic notebook seeder dry run confirms write lock
+- `flutter build macos`
+- `scripts/package_macos_release.sh <version>`
 - demo-mode app launch
 - quickstart PDF regenerated from `docs/user/quickstart.md`
+- GitHub Actions CI passes on `main`
 
 ## macOS
 
@@ -31,6 +34,8 @@ Required before a public macOS build:
 - Confirm audit export writes Markdown, JSON, and CSV sidecars under the backup
   run's `audit/` folder.
 - Sign and notarize the app before distributing outside local development.
+- The tag workflow builds and uploads an unsigned prerelease zip. Signed and
+  notarized distribution still requires Apple Developer credentials.
 
 ## Windows
 

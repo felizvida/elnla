@@ -161,7 +161,15 @@ python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-b
 dart run tool/backup_once.dart
 python3 tool/build_quickstart_pdf.py
 scripts/release_smoke_check.sh
+scripts/package_macos_release.sh 1.0.1
 ```
+
+Release automation:
+
+- `.github/workflows/ci.yml` runs tests, analyzer, safety scans, seeder dry-run,
+  and a macOS build on push and pull request.
+- `.github/workflows/release.yml` runs on `v*` tags, builds the unsigned macOS
+  prerelease zip, and uploads it to the matching GitHub release.
 
 The synthetic test-notebook seeder is intentionally write-capable and is locked
 behind a double opt-in so it cannot be run accidentally:

@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 dart format --set-exit-if-changed lib test tool
 flutter test
 flutter analyze
+flutter build macos
 git diff --check
 
 home_path_pattern='/'"Users"'/'

@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  macos-prerelease:
+    name: Build macOS Prerelease
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build macOS zip
+        run: scripts/package_macos_release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          release_dir="dist/releases/v${version}"
+          gh release upload "$TAG" \
+            "$release_dir/BenchVault-macOS-v${version}-prerelease.zip" \
+            "$release_dir/SHA256SUMS.txt" \
+            --clobber
