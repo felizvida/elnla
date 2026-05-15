@@ -211,6 +211,13 @@ void main() {
     ).search('Where is zebrafish hypoxia imaging described?');
     expect(result.usedOpenAi, isFalse);
     expect(result.hits.single.chunk.pageTitle, 'Zebrafish hypoxia assay');
+
+    final fuzzyResult = await NotebookSearchService(
+      service,
+    ).search('zebrafsh Zeis microscop raw imgng');
+    expect(fuzzyResult.usedOpenAi, isFalse);
+    expect(fuzzyResult.hits.single.chunk.pageTitle, 'Zebrafish hypoxia assay');
+    expect(fuzzyResult.answer, contains('Local fuzzy search'));
   });
 
   test('integrity seal detects byte-level backup changes', () async {

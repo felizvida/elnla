@@ -8,6 +8,9 @@ import 'search_models.dart';
 class NotebookSearchService {
   NotebookSearchService(this.backupService);
 
+  static const _fallbackMethodSummary =
+      'Local fuzzy fallback uses on-device BM25 relevance, phrase boosts, typo-tolerant token matching, and character n-gram similarity.';
+
   final BackupService backupService;
 
   Future<NotebookSearchResult> search(String query) async {
@@ -59,10 +62,11 @@ class NotebookSearchService {
     } catch (error) {
       return NotebookSearchResult(
         query: cleanQuery,
-        answer: _localAnswer(localHits),
+        answer: _localAnswer(localHits, fallbackReason: 'OpenAI unavailable'),
         hits: localHits,
         usedOpenAi: false,
-        warning: 'OpenAI search failed: $error',
+        warning:
+            'OpenAI search unavailable; showing local fuzzy fallback. ${_briefError(error)}',
       );
     }
   }
@@ -95,29 +99,34 @@ class NotebookSearchService {
     required int limit,
   }) {
     final tokens = _tokens(query);
-    final hits = <NotebookSearchHit>[];
-    for (final chunk in chunks) {
-      final text = chunk.text.toLowerCase();
-      final title = chunk.pageTitle.toLowerCase();
-      final path = chunk.path.toLowerCase();
-      var score = 0.0;
-      for (final token in tokens) {
-        final matches = _countMatches(text, token);
-        if (matches > 0) {
-          score += min(matches, 8).toDouble();
-        }
-        if (title.contains(token)) {
-          score += 5;
-        }
-        if (path.contains(token)) {
-          score += 3;
-        }
-        if (chunk.attachments.any(
-          (value) => value.toLowerCase().contains(token),
-        )) {
-          score += 2;
-        }
+    final queryText = _normalize(query);
+    final queryTrigrams = _trigrams(queryText);
+    final profiles = chunks.map(_SearchProfile.new).toList();
+    final documentFrequency = <String, int>{};
+    var totalLength = 0;
+    for (final profile in profiles) {
+      totalLength += profile.termCount;
+      for (final token in profile.termCounts.keys) {
+        documentFrequency[token] = (documentFrequency[token] ?? 0) + 1;
       }
+    }
+    final averageLength = profiles.isEmpty
+        ? 1.0
+        : totalLength / profiles.length;
+    final hits = <NotebookSearchHit>[];
+    for (final profile in profiles) {
+      final chunk = profile.chunk;
+      var score = _bm25(
+        tokens,
+        profile.termCounts,
+        profile.termCount,
+        averageLength,
+        documentFrequency,
+        profiles.length,
+      );
+      score += _fieldScore(tokens, profile);
+      score += _phraseScore(queryText, profile);
+      score += _trigramContainment(queryTrigrams, profile.trigrams) * 4;
       if (score > 0) {
         hits.add(
           NotebookSearchHit(
@@ -138,27 +147,183 @@ class NotebookSearchService {
     return hits.take(limit).toList();
   }
 
-  int _countMatches(String text, String token) {
-    var count = 0;
-    var start = 0;
-    while (true) {
-      final index = text.indexOf(token, start);
-      if (index < 0) {
-        return count;
+  double _bm25(
+    List<String> queryTokens,
+    Map<String, int> termCounts,
+    int documentLength,
+    double averageLength,
+    Map<String, int> documentFrequency,
+    int documentCount,
+  ) {
+    const k1 = 1.2;
+    const b = 0.75;
+    var score = 0.0;
+    for (final token in queryTokens) {
+      final frequency = termCounts[token] ?? 0;
+      if (frequency == 0) {
+        continue;
       }
-      count++;
-      start = index + token.length;
+      final containingDocs = documentFrequency[token] ?? 0;
+      final idf = log(
+        1 + (documentCount - containingDocs + 0.5) / (containingDocs + 0.5),
+      );
+      final denominator =
+          frequency +
+          k1 * (1 - b + b * (documentLength / max(averageLength, 1)));
+      score += idf * ((frequency * (k1 + 1)) / denominator);
     }
+    return score * 6;
+  }
+
+  double _fieldScore(List<String> tokens, _SearchProfile profile) {
+    var score = 0.0;
+    for (final token in tokens) {
+      if (profile.title.contains(token)) {
+        score += 7;
+      } else {
+        score += _bestTokenSimilarity(token, profile.titleTokens) * 2.5;
+      }
+      if (profile.path.contains(token)) {
+        score += 4;
+      } else {
+        score += _bestTokenSimilarity(token, profile.pathTokens) * 1.8;
+      }
+      if (profile.attachments.contains(token)) {
+        score += 3;
+      } else {
+        score += _bestTokenSimilarity(token, profile.attachmentTokens) * 1.5;
+      }
+      if (profile.termCounts.containsKey(token)) {
+        score += 1;
+      } else {
+        score += _bestTokenSimilarity(token, profile.uniqueTokens) * 1.2;
+      }
+    }
+    return score;
+  }
+
+  double _phraseScore(String queryText, _SearchProfile profile) {
+    if (queryText.isEmpty) {
+      return 0;
+    }
+    var score = 0.0;
+    if (profile.title.contains(queryText)) {
+      score += 14;
+    }
+    if (profile.path.contains(queryText)) {
+      score += 8;
+    }
+    if (profile.attachments.contains(queryText)) {
+      score += 6;
+    }
+    if (profile.text.contains(queryText)) {
+      score += 10;
+    }
+    return score;
+  }
+
+  double _bestTokenSimilarity(String token, Set<String> candidates) {
+    if (token.length < 4 || candidates.isEmpty) {
+      return 0;
+    }
+    var best = 0.0;
+    final first = token.codeUnitAt(0);
+    for (final candidate in candidates) {
+      if ((candidate.length - token.length).abs() > 3) {
+        continue;
+      }
+      if (candidate.codeUnitAt(0) != first) {
+        continue;
+      }
+      final similarity = _editSimilarity(token, candidate);
+      if (similarity > best) {
+        best = similarity;
+        if (best == 1) {
+          break;
+        }
+      }
+    }
+    return best >= 0.78 ? best : 0;
+  }
+
+  double _editSimilarity(String a, String b) {
+    if (a == b) {
+      return 1;
+    }
+    if (a.isEmpty || b.isEmpty) {
+      return 0;
+    }
+    final distance = _levenshtein(a, b);
+    return 1 - distance / max(a.length, b.length);
+  }
+
+  int _levenshtein(String a, String b) {
+    final previous = List<int>.generate(b.length + 1, (index) => index);
+    final current = List<int>.filled(b.length + 1, 0);
+    for (var i = 0; i < a.length; i++) {
+      current[0] = i + 1;
+      for (var j = 0; j < b.length; j++) {
+        final cost = a.codeUnitAt(i) == b.codeUnitAt(j) ? 0 : 1;
+        current[j + 1] = min(
+          min(current[j] + 1, previous[j + 1] + 1),
+          previous[j] + cost,
+        );
+      }
+      for (var j = 0; j < previous.length; j++) {
+        previous[j] = current[j];
+      }
+    }
+    return previous[b.length];
+  }
+
+  double _trigramContainment(Set<String> query, Set<String> document) {
+    if (query.isEmpty || document.isEmpty) {
+      return 0;
+    }
+    var overlap = 0;
+    for (final trigram in query) {
+      if (document.contains(trigram)) {
+        overlap++;
+      }
+    }
+    return overlap / query.length;
   }
 
   List<String> _tokens(String value) {
-    final matches = RegExp(r"[a-zA-Z0-9][a-zA-Z0-9._'-]+")
-        .allMatches(value.toLowerCase())
+    final raw = RegExp(r"[a-zA-Z0-9][a-zA-Z0-9._'-]+")
+        .allMatches(_normalize(value))
         .map((match) => match.group(0)!)
         .where((token) => token.length > 1)
         .toSet()
         .toList();
-    return matches;
+    final filtered = raw
+        .where((token) => !_stopWords.contains(token))
+        .toSet()
+        .toList();
+    return filtered.isEmpty ? raw : filtered;
+  }
+
+  String _normalize(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r"[^a-z0-9._'\-\s]+"), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Set<String> _trigrams(String value) {
+    final padded = '  ${_normalize(value)}  ';
+    if (padded.trim().length < 3) {
+      return const {};
+    }
+    final grams = <String>{};
+    for (var index = 0; index <= padded.length - 3; index++) {
+      final gram = padded.substring(index, index + 3);
+      if (gram.trim().isNotEmpty) {
+        grams.add(gram);
+      }
+    }
+    return grams;
   }
 
   String _snippet(String text, List<String> tokens) {
@@ -184,17 +349,39 @@ class NotebookSearchService {
   String _localAnswer(
     List<NotebookSearchHit> hits, {
     bool missingOpenAiKey = false,
+    String? fallbackReason,
   }) {
     if (hits.isEmpty) {
       return missingOpenAiKey
-          ? 'No local keyword matches found. Add an OpenAI API key in Search Settings for natural-language answers.'
-          : 'No local keyword matches found.';
+          ? 'No local fuzzy matches found. Add an OpenAI API key in Search Settings for natural-language answers.'
+          : 'No local fuzzy matches found.';
     }
-    final top = hits.first.chunk;
-    final suffix = missingOpenAiKey
-        ? ' Add an OpenAI API key in Search Settings for natural-language answers.'
-        : '';
-    return 'Top local match: ${top.notebookName} / ${top.path}.$suffix';
+    final buffer = StringBuffer();
+    if (fallbackReason == null) {
+      buffer.write('Local fuzzy search found ${hits.length} likely match');
+    } else {
+      buffer.write(
+        '$fallbackReason. Local fuzzy fallback found ${hits.length} likely match',
+      );
+    }
+    if (hits.length != 1) {
+      buffer.write('es');
+    }
+    buffer.writeln('.');
+    buffer.writeln(_fallbackMethodSummary);
+    if (missingOpenAiKey) {
+      buffer.writeln(
+        'Add an OpenAI API key in Search Settings for natural-language answers.',
+      );
+    }
+    buffer.writeln();
+    buffer.writeln('Best matches:');
+    for (final hit in hits.take(3)) {
+      buffer
+        ..writeln('- ${hit.chunk.citation}')
+        ..writeln('  ${_truncate(hit.snippet, 180)}');
+    }
+    return buffer.toString().trim();
   }
 
   Future<String> _askOpenAi({
@@ -304,4 +491,117 @@ class NotebookSearchService {
   String _redact(String value) {
     return value.replaceAll(RegExp(r'sk-[A-Za-z0-9_-]+'), 'sk-...');
   }
+
+  String _briefError(Object error) {
+    final redacted = _redact(error.toString()).replaceAll(RegExp(r'\s+'), ' ');
+    return redacted.length <= 160
+        ? redacted
+        : '${redacted.substring(0, 160)}...';
+  }
+
+  static const _stopWords = {
+    'about',
+    'after',
+    'again',
+    'also',
+    'and',
+    'are',
+    'because',
+    'before',
+    'between',
+    'can',
+    'could',
+    'did',
+    'does',
+    'for',
+    'from',
+    'has',
+    'have',
+    'how',
+    'into',
+    'not',
+    'show',
+    'that',
+    'the',
+    'their',
+    'there',
+    'this',
+    'was',
+    'were',
+    'what',
+    'when',
+    'where',
+    'which',
+    'with',
+    'without',
+  };
+}
+
+class _SearchProfile {
+  _SearchProfile(this.chunk)
+    : text = _sharedNormalize(chunk.text),
+      title = _sharedNormalize(chunk.pageTitle),
+      path = _sharedNormalize(chunk.path),
+      attachments = _sharedNormalize(chunk.attachments.join(' ')) {
+    titleTokens = _sharedTokens(title);
+    pathTokens = _sharedTokens(path);
+    attachmentTokens = _sharedTokens(attachments);
+    final weightedTokens = [
+      ..._sharedTokens(text),
+      for (var i = 0; i < 3; i++) ...titleTokens,
+      for (var i = 0; i < 2; i++) ...pathTokens,
+      for (var i = 0; i < 2; i++) ...attachmentTokens,
+    ];
+    termCounts = <String, int>{};
+    for (final token in weightedTokens) {
+      termCounts[token] = (termCounts[token] ?? 0) + 1;
+    }
+    termCount = max(weightedTokens.length, 1);
+    uniqueTokens = termCounts.keys.toSet();
+    trigrams = _sharedTrigrams('$title $path $attachments $text');
+  }
+
+  final NotebookSearchChunk chunk;
+  final String text;
+  final String title;
+  final String path;
+  final String attachments;
+  late final Set<String> titleTokens;
+  late final Set<String> pathTokens;
+  late final Set<String> attachmentTokens;
+  late final Map<String, int> termCounts;
+  late final int termCount;
+  late final Set<String> uniqueTokens;
+  late final Set<String> trigrams;
+}
+
+String _sharedNormalize(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r"[^a-z0-9._'\-\s]+"), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+Set<String> _sharedTokens(String value) {
+  return RegExp(r"[a-zA-Z0-9][a-zA-Z0-9._'-]+")
+      .allMatches(_sharedNormalize(value))
+      .map((match) => match.group(0)!)
+      .where((token) => token.length > 1)
+      .toSet();
+}
+
+Set<String> _sharedTrigrams(String value) {
+  final padded = '  ${_sharedNormalize(value)}  ';
+  if (padded.trim().length < 3) {
+    return const {};
+  }
+  final grams = <String>{};
+  for (var index = 0; index <= padded.length - 3; index++) {
+    final gram = padded.substring(index, index + 3);
+    if (gram.trim().isNotEmpty) {
+      grams.add(gram);
+    }
+  }
+  return grams;
 }

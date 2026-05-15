@@ -409,6 +409,14 @@ Keep this section practical. These are implementation notes that prevent future 
 - `readable/search_chunks.jsonl` is for natural-language search. Keep each chunk bounded in size and include attachment summary strings so users can ask for records by assay type, instrument file name, or payload format.
 - Keep faithful archives and readable sidecars separate. The `.7z` archive plus extracted originals are the preservation copy; Markdown/JSONL are convenience indexes generated from the backup.
 
+### Search Fallback
+
+- OpenAI search should be treated as an enhancement, not a dependency. Always build local readable/search sidecars first so search still works without an API key, during network outages, or when the OpenAI request returns an error.
+- Local fallback currently ranks chunks with a hybrid lexical/fuzzy method: BM25-style term relevance, exact phrase boosts, title/path/attachment field boosts, typo-tolerant token similarity using edit distance, and character n-gram containment. This is deliberately on-device and deterministic.
+- On OpenAI failure, return the local fuzzy results with a warning rather than surfacing a hard failure. The user should still get the top pages and snippets, and the warning should make clear that the answer is local fallback output.
+- Keep OpenAI context tight: send only top-ranked excerpts, attachment summaries, page paths, notebook names, and backup timestamps. Never send credentials, raw archives, local absolute paths, or unrelated notebook material.
+- Public screenshots for AI search must use demo data only. They may show the natural-language answer surface and local fallback availability, but should not expose real notebook names, IDs, paths, credentials, or raw backup contents.
+
 ### Parsing And Rendering
 
 - The JSON export is table-like. Build maps by IDs rather than assuming file order: `tree_nodes.json` defines notebook structure, `entries.json` links pages to entries, `entry_parts.json` holds ordered parts, and `comments.json` links comments to `entry_part_id`.

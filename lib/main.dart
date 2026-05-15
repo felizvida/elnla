@@ -214,7 +214,12 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       _backups = [backup];
       _selectedBackup = backup;
       _selectedNotebook = notebook;
-      _selectedNode = notebook.firstPage;
+      _selectedNode = _demoSearchMode
+          ? notebook.nodes.firstWhere(
+              (node) => node.title == 'Mixed file attachments',
+              orElse: () => notebook.firstPage!,
+            )
+          : notebook.firstPage;
       _integrityCheck = BackupIntegrityCheck(
         backupId: 'demo_20260514_090000Z',
         checkedAt: DateTime.utc(2026, 5, 14, 9),
@@ -224,7 +229,12 @@ class _ElnlaHomeState extends State<ElnlaHome> {
         checkedFileCount: 0,
         checkedBytes: 0,
       );
-      _openAiSearchReady = false;
+      _openAiSearchReady = _demoSearchMode;
+      if (_demoSearchMode) {
+        _searchController.text =
+            'Which backed-up records contain qPCR results and original payloads?';
+        _searchResult = _demoOpenAiSearchResult();
+      }
       _log
         ..clear()
         ..addAll([
@@ -397,7 +407,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
         _searchResult = result;
         _status = result.usedOpenAi
             ? 'Natural-language notebook search complete.'
-            : 'Local notebook search complete.';
+            : 'Local fuzzy notebook search complete.';
       });
     } catch (error) {
       if (!mounted) {
@@ -815,6 +825,60 @@ class _ElnlaHomeState extends State<ElnlaHome> {
 }
 
 bool get _demoMode => Platform.environment['ELNLA_DEMO_MODE'] == '1';
+
+bool get _demoSearchMode => Platform.environment['ELNLA_DEMO_SEARCH'] == '1';
+
+NotebookSearchResult _demoOpenAiSearchResult() {
+  const query =
+      'Which backed-up records contain qPCR results and original payloads?';
+  const backupCreatedAt = '2026-05-14T09:00:00.000Z';
+  return NotebookSearchResult(
+    query: query,
+    answer:
+        'The backed-up qPCR evidence is in Demo Immunology Notebook / Assays / qPCR run 001, which records the master-mix workflow, melt-curve review, and delayed IL6 amplification observation [1]. Original payload review is in Demo Immunology Notebook / Imaging and Attachments / Mixed file attachments, where the backup includes `qpcr_results.csv`, `amplicon.fasta`, `qc_report.pdf`, and `tiny_signal.png`; the run reports 15 of 15 original attachments verified [2].',
+    hits: [
+      NotebookSearchHit(
+        chunk: NotebookSearchChunk(
+          id: 'demo_20260514_090000Z:2:1',
+          backupId: 'demo_20260514_090000Z',
+          notebookName: 'Demo Immunology Notebook',
+          backupCreatedAt: DateTime.parse(backupCreatedAt),
+          nodeId: 2,
+          pageTitle: 'qPCR run 001',
+          path: 'Assays / qPCR run 001',
+          text:
+              'Protocol: prepare master mix on ice, load 96-well plate, and review melt curves. Observation: treated PBMC sample S002 shows delayed IL6 amplification.',
+        ),
+        score: 31.4,
+        snippet:
+            'Protocol: prepare master mix on ice, load 96-well plate, and review melt curves. Observation: treated PBMC sample S002 shows delayed IL6 amplification.',
+      ),
+      NotebookSearchHit(
+        chunk: NotebookSearchChunk(
+          id: 'demo_20260514_090000Z:4:1',
+          backupId: 'demo_20260514_090000Z',
+          notebookName: 'Demo Immunology Notebook',
+          backupCreatedAt: DateTime.parse(backupCreatedAt),
+          nodeId: 4,
+          pageTitle: 'Mixed file attachments',
+          path: 'Imaging and Attachments / Mixed file attachments',
+          text:
+              'Attachment qpcr_results.csv; text/csv; 77 bytes. Attachment amplicon.fasta. Attachment qc_report.pdf. Attachment tiny_signal.png.',
+          attachments: [
+            'Attachment qpcr_results.csv; text/csv; 77 bytes',
+            'Attachment amplicon.fasta; application/octet-stream; 88 bytes',
+            'Attachment qc_report.pdf; application/pdf; 602 bytes',
+            'Attachment tiny_signal.png; image/png; 68 bytes',
+          ],
+        ),
+        score: 28.2,
+        snippet:
+            'Attachment qpcr_results.csv; text/csv; 77 bytes. Attachment amplicon.fasta. Attachment qc_report.pdf. Attachment tiny_signal.png.',
+      ),
+    ],
+    usedOpenAi: true,
+  );
+}
 
 RenderNotebook _demoNotebook() {
   return RenderNotebook(
@@ -1594,6 +1658,10 @@ class _SearchPanel extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final searchResult = result;
+    final isFallback =
+        searchResult != null &&
+        !searchResult.usedOpenAi &&
+        searchResult.warning != null;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
@@ -1655,13 +1723,19 @@ class _SearchPanel extends StatelessWidget {
                 Icon(
                   searchResult.usedOpenAi
                       ? Icons.auto_awesome
+                      : isFallback
+                      ? Icons.travel_explore
                       : Icons.manage_search_outlined,
                   size: 16,
                   color: colors.primary,
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  searchResult.usedOpenAi ? 'OpenAI answer' : 'Local results',
+                  searchResult.usedOpenAi
+                      ? 'OpenAI answer'
+                      : isFallback
+                      ? 'Local fuzzy fallback'
+                      : 'Local fuzzy results',
                   style: textTheme.labelMedium?.copyWith(color: colors.primary),
                 ),
                 if (searchResult.warning != null) ...[

@@ -16,6 +16,8 @@ in the app and in the documentation so backup failures are easier to understand.
 
 ## Screenshots
 
+![ELNLA AI notebook search](docs/assets/screenshots/elnla-ai-search.png)
+
 ![ELNLA read-only viewer](docs/assets/screenshots/elnla-viewer.png)
 
 ![ELNLA automatic backup schedule](docs/assets/screenshots/elnla-schedule.png)
@@ -30,7 +32,7 @@ in the app and in the documentation so backup failures are easier to understand.
 - Extracts and indexes notebook pages for local read-only viewing.
 - Writes a separate readable Markdown copy plus JSONL search chunks for every
   successful backup.
-- Provides notebook search with local keyword fallback and OpenAI-powered
+- Provides notebook search with local fuzzy fallback and OpenAI-powered
   natural-language answers when the user saves an OpenAI API key locally.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
@@ -118,6 +120,7 @@ Useful helper commands:
 python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-browser
 python3 scripts/labarchives_seed_bio_test_notebook.py
 dart run tool/backup_once.dart
+python3 tool/build_quickstart_pdf.py
 ```
 
 For clean public screenshots, run the app with demo data:

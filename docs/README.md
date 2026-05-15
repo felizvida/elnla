@@ -23,11 +23,12 @@ ignored folders.
 - `assets/elnla-banner.svg`: project banner for the README and GitHub preview
   contexts that render repository images.
 - `assets/screenshots/`: demo-mode app screenshots used by the README and
-  quickstart.
+  quickstart, including the AI notebook search surface.
 
 ## Maintenance Notes
 
-- Regenerate the quickstart PDF after editing its Markdown source.
+- Regenerate the quickstart PDF after editing its Markdown source with
+  `python3 tool/build_quickstart_pdf.py`.
 - Refresh screenshots with `scripts/run_macos_app.sh --demo` so no local paths
   or credentials appear in public assets.
 - Add implementation discoveries to the developer reference instead of reopening

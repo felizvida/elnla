@@ -24,7 +24,7 @@ instrument output, and other bench-research attachments.
 - Verifies full-size original attachment files after backup by byte size.
 - Seals each backup with SHA-256 checksums and warns if files change later.
 - Creates a readable Markdown copy and search index for each backup.
-- Lets you search backed-up notebooks with local keyword matching, or with
+- Lets you search backed-up notebooks with local fuzzy matching, or with
   natural-language answers when you add an OpenAI API key.
 - Lets you schedule routine backups while the app is open.
 - Stores credentials and backups locally, not in GitHub.
@@ -98,13 +98,16 @@ local preservation; it is not a legal certification by itself.
 
 ## Search Backed-Up Notebooks
 
+![Natural-language notebook search](../assets/screenshots/elnla-ai-search.png){width=80%}
+
 Use the search field above the notebook viewer to ask about backed-up content.
 ELNLA always creates a local readable copy first, then searches that copy.
 
-Without an OpenAI API key, search uses local keyword matching and shows the best
-matching pages. With an OpenAI API key, ELNLA sends the best matching excerpts
-to OpenAI and returns a concise answer with page citations. The OpenAI key is
-stored locally in the ignored credentials folder.
+Without an OpenAI API key, or if the OpenAI request fails, search uses local
+fuzzy matching and shows the best matching pages. With an OpenAI API key, ELNLA
+sends the best matching excerpts to OpenAI and returns a concise answer with
+page citations. The OpenAI key is stored locally in the ignored credentials
+folder.
 
 Useful searches include:
 
