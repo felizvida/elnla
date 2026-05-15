@@ -167,14 +167,18 @@ work.
 
 ## Credentials And Local Security
 
-- LabArchives credentials, UID files, OpenAI keys, user-access XML, schedules,
-  and integrity ledgers are stored in ignored local files. They are not pushed to
-  GitHub by design.
+- On macOS app launches, BenchVault prefers macOS Keychain for LabArchives
+  access ID/access key and the OpenAI API key. It keeps non-secret setup
+  metadata, UID files, user-access XML, schedules, and integrity ledgers in
+  ignored local files. They are not pushed to GitHub by design.
+- Existing local secret files are migrated to Keychain when read by the macOS
+  app. Non-macOS platforms and test/tooling paths still use the ignored local
+  file fallback until their native secure stores are implemented.
 - On macOS and Linux-like systems, BenchVault attempts owner-only file
   permissions for local credential files. On Windows this permission-hardening
   path is not currently implemented.
-- Credentials are not currently stored in macOS Keychain, Windows Credential
-  Manager, iPad Keychain, hardware-backed secure storage, or an encrypted vault.
+- Credentials are not yet stored in Windows Credential Manager, iPad Keychain,
+  hardware-backed secure storage, or an encrypted vault.
 - Backup archives and readable sidecars are not encrypted by BenchVault. The
   selected backup folder must be protected by the operating system, disk
   encryption, institutional storage controls, or other local security measures.

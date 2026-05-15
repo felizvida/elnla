@@ -61,14 +61,14 @@ or simulator with Files access:
 
 ## Secure Storage Direction
 
-Current local development stores LabArchives and OpenAI credentials in ignored
-local files with owner-only permissions where the platform supports chmod-style
-permissions. Production packaging should migrate to:
+Current macOS app launches prefer macOS Keychain for LabArchives and OpenAI
+secrets, with ignored local files used for non-secret setup metadata and
+fallback/test paths. Production packaging should still validate secure storage
+behavior before broad distribution:
 
-- macOS Keychain for macOS.
 - Windows Credential Manager for Windows.
 - iPad Keychain for iPad.
 
-Until those integrations are implemented and validated, BenchVault should state
-plainly that credentials are local files protected by local machine controls, not
-a hardware-backed vault.
+Until Windows and iPad integrations are implemented and validated, BenchVault
+should state plainly that those platforms use local fallback behavior and are not
+fully supported release targets.

@@ -6,6 +6,7 @@ import 'package:benchvault/src/backup_service.dart';
 import 'package:benchvault/src/notebook_search_service.dart';
 import 'package:benchvault/src/preflight_models.dart';
 import 'package:benchvault/src/search_models.dart';
+import 'package:benchvault/src/secure_secret_store.dart';
 import 'package:benchvault/src/setup_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -317,6 +318,73 @@ void main() {
     );
     expect(await service.loadOpenAiSearchSettings(), isNull);
   });
+
+  test('secure secret store keeps OpenAI key out of local metadata', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_secure_openai_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final secretStore = InMemorySecureSecretStore();
+    final service = BackupService(root: root, secretStore: secretStore);
+
+    await service.saveOpenAiSearchSettings(
+      const OpenAiSearchSettings(
+        apiKey: 'test-openai-secret-store-only',
+        model: 'gpt-test',
+      ),
+    );
+
+    final loaded = await service.loadOpenAiSearchSettings();
+    expect(loaded?.apiKey, 'test-openai-secret-store-only');
+    expect(loaded?.model, 'gpt-test');
+
+    final metadata = await File(
+      '${root.path}/local_credentials/openai.env',
+    ).readAsString();
+    expect(metadata, contains('OPENAI_KEY_STORAGE=test secure store'));
+    expect(metadata, contains('OPENAI_MODEL=gpt-test'));
+    expect(metadata, isNot(contains('test-openai-secret-store-only')));
+  });
+
+  test(
+    'secure LabArchives credentials satisfy setup without file secrets',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'benchvault_secure_labarchives_test_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final secretStore = InMemorySecureSecretStore();
+      await secretStore.write(
+        service: BenchVaultSecretServices.labArchives,
+        account: BenchVaultSecretAccounts.labArchivesAccessId,
+        value: 'secure-login-id',
+      );
+      await secretStore.write(
+        service: BenchVaultSecretServices.labArchives,
+        account: BenchVaultSecretAccounts.labArchivesAccessKey,
+        value: 'secure-access-key',
+      );
+      final local = Directory('${root.path}/local_credentials');
+      await local.create(recursive: true);
+      await File(
+        '${local.path}/labarchives_user.env',
+      ).writeAsString('LABARCHIVES_GOV_UID=fake_uid\n');
+
+      final service = BackupService(root: root, secretStore: secretStore);
+      final status = await service.loadSetupStatus();
+
+      expect(status.hasCredentials, isTrue);
+      expect(status.hasUserAccess, isTrue);
+      final report = await service.runPreflight();
+      final credentials = report.checks.firstWhere(
+        (check) => check.id == 'credentials',
+      );
+      expect(credentials.status, PreflightStatus.pass);
+      expect(credentials.detail, contains('test secure store'));
+    },
+  );
 
   test('readable copy and local search are generated from render JSON', () async {
     final root = await Directory.systemTemp.createTemp(

@@ -8,7 +8,7 @@ Purpose: compact working notes for future coding. Use this first before reopenin
 
 Repository path convention: tracked files must use paths relative to the project root. Do not commit machine-specific absolute paths.
 
-Credential convention: real credentials, tokens, passwords, access keys, local auth files, and downloaded source documents must stay in ignored local paths such as `local_credentials/`, `.env.local`, or `local_docs/`. GitHub should only receive placeholder templates such as `.env.example` with fake values.
+Credential convention: real credentials, tokens, passwords, access keys, local auth files, and downloaded source documents must stay in macOS Keychain or ignored local paths such as `local_credentials/`, `.env.local`, or `local_docs/`. GitHub should only receive placeholder templates such as `.env.example` with fake values.
 
 ## Document Map
 
@@ -485,7 +485,7 @@ Viewer implementation rules:
 
 - Integrity sealing is tamper-evidence, not legal certification. Hash every protected run file except the integrity manifest itself, then record the manifest hash in the ignored local ledger.
 - The viewer should warn loudly if any protected file changes after backup. Do not attempt to repair or normalize protected files during verification because that would change the evidence surface.
-- Keep credentials, UID files, OpenAI keys, source PDFs, raw downloaded notebooks, and integrity ledgers in ignored local paths. Only placeholder templates and relative-path examples belong in Git.
+- Keep credentials, UID files, OpenAI keys, source PDFs, raw downloaded notebooks, and integrity ledgers in macOS Keychain or ignored local paths. Only placeholder templates and relative-path examples belong in Git.
 
 ## Living Implementation Notes
 
@@ -505,7 +505,7 @@ Append notes here as coding work reveals practical behavior.
 - Readable/search sidecar convention: each successful backup run also contains `readable/notebook.md` and `readable/search_chunks.jsonl`. These are derived from `render_notebook.json`, use backup-folder-relative attachment paths, and are regenerated for older backups on first search if missing.
 - Integrity seal convention: after the archive, extracted files, render JSON, readable sidecars, original manifest, and backup record are written, create `integrity_manifest.json` with SHA-256 hashes for every protected backup-run file except the integrity manifest itself. Append the manifest hash to ignored `local_credentials/integrity_ledger.jsonl` as a local hash-chain ledger. The viewer verifies both the file hashes and the local seal before displaying the backup status; this is tamper-evidence, not a standalone legal certification.
 - NIH visual convention: use an NIH/HHS-aligned blue-first palette for the app and public assets. Primary blue `#005ea2`, dark blue `#162e51`, light blue `#e5faff`, gold accent `#face00`, and cool neutral surfaces keep the app close to the NIH/HHS web environment while preserving semantic status colors.
-- OpenAI search credential convention: store `OPENAI_API_KEY` and optional `OPENAI_MODEL` only in ignored `local_credentials/openai.env`. The app defaults the model to `gpt-5.5` and sends only the locally selected notebook excerpts needed for a natural-language answer.
+- OpenAI search credential convention: on macOS app launches, store `OPENAI_API_KEY` in Keychain and keep only non-secret model metadata in ignored `local_credentials/openai.env`; fallback/test paths may store both values in the ignored file. The app defaults the model to `gpt-5.5` and sends only the locally selected notebook excerpts needed for a natural-language answer.
 - Search filter convention: keep search filters local and deterministic before
   OpenAI context selection. `All`, `Text`, `Files`, `Comments`, exact phrase,
   and verified-only filters narrow the local chunk corpus first; OpenAI only sees

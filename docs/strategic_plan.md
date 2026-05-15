@@ -336,9 +336,10 @@ Implementation tasks:
 - Keep the release smoke-test checklist current.
 
 Status: partially implemented. The app has first-launch credential setup,
-local-only ignored credential files, owner-rights explanation, backup folder
-selection, schedule setup, and a release smoke-test script. Native Keychain,
-signing, notarization, and installer work remain external release tasks.
+macOS Keychain-backed secret storage with local fallback, owner-rights
+explanation, backup folder selection, schedule setup, and a release smoke-test
+script. Signing, notarization, installer work, and non-macOS secure stores
+remain external release tasks.
 
 Exit criteria:
 

@@ -10,6 +10,7 @@ import 'labarchives_client.dart';
 import 'preflight_models.dart';
 import 'readable_notebook_exporter.dart';
 import 'search_models.dart';
+import 'secure_secret_store.dart';
 import 'setup_models.dart';
 
 typedef ProgressCallback = void Function(String message);
@@ -27,9 +28,16 @@ class _BackupFailure {
 }
 
 class BackupService {
-  BackupService({Directory? root}) : root = root ?? _findProjectRoot();
+  BackupService({Directory? root, SecureSecretStore? secretStore})
+    : root = root ?? _findProjectRoot(),
+      _secretStore =
+          secretStore ??
+          (root == null && MacOSKeychainSecretStore.isSupported
+              ? const MacOSKeychainSecretStore()
+              : const DisabledSecretStore());
 
   final Directory root;
+  final SecureSecretStore _secretStore;
 
   Directory get credentialsDir =>
       Directory(_join(root.path, 'local_credentials'));
@@ -60,8 +68,10 @@ class BackupService {
       final lines = await _notebooksFile.readAsLines();
       notebookCount = lines.length > 1 ? lines.length - 1 : 0;
     }
+    final hasSecureCredentials = await _hasSecureLabArchivesCredentials();
+    final hasFileCredentials = await _hasLabArchivesCredentialFileSecrets();
     return LocalSetupStatus(
-      hasCredentials: await _credentialFile.exists(),
+      hasCredentials: hasSecureCredentials || hasFileCredentials,
       hasUserAccess: await _userFile.exists(),
       hasNotebookIndex: await _notebooksFile.exists(),
       notebookCount: notebookCount,
@@ -107,6 +117,16 @@ class BackupService {
   }
 
   Future<OpenAiSearchSettings?> loadOpenAiSearchSettings() async {
+    if (_secretStore.isAvailable) {
+      final apiKey = await _readSecret(
+        service: BenchVaultSecretServices.openAi,
+        account: BenchVaultSecretAccounts.openAiApiKey,
+      );
+      if (apiKey != null && apiKey.trim().isNotEmpty) {
+        final model = await _openAiModelFromFile();
+        return OpenAiSearchSettings(apiKey: apiKey, model: model);
+      }
+    }
     if (!await _openAiSearchFile.exists()) {
       return null;
     }
@@ -115,6 +135,14 @@ class BackupService {
     final model = values['OPENAI_MODEL'] ?? OpenAiSearchSettings.defaultModel;
     if (apiKey.trim().isEmpty) {
       return null;
+    }
+    if (_secretStore.isAvailable) {
+      await _writeSecret(
+        service: BenchVaultSecretServices.openAi,
+        account: BenchVaultSecretAccounts.openAiApiKey,
+        value: apiKey,
+      );
+      await _writeOpenAiMetadata(model);
     }
     return OpenAiSearchSettings(apiKey: apiKey, model: model);
   }
@@ -142,10 +170,11 @@ class BackupService {
 
   PreflightCheck _setupPreflight(LocalSetupStatus setupStatus) {
     if (setupStatus.hasCredentials && setupStatus.hasUserAccess) {
-      return const PreflightCheck(
+      return PreflightCheck(
         id: 'credentials',
         title: 'LabArchives authorization',
-        detail: 'Credentials and UID are present in local-only setup files.',
+        detail:
+            'Credentials are present in ${_credentialStorageLabel()}; UID is present in local setup metadata.',
         status: PreflightStatus.pass,
       );
     }
@@ -410,6 +439,10 @@ class BackupService {
   Future<void> saveOpenAiSearchSettings(OpenAiSearchSettings settings) async {
     final apiKey = settings.apiKey.trim();
     if (apiKey.isEmpty) {
+      await _deleteSecret(
+        service: BenchVaultSecretServices.openAi,
+        account: BenchVaultSecretAccounts.openAiApiKey,
+      );
       if (await _openAiSearchFile.exists()) {
         await _openAiSearchFile.delete();
       }
@@ -418,6 +451,15 @@ class BackupService {
     final model = settings.model.trim().isEmpty
         ? OpenAiSearchSettings.defaultModel
         : settings.model.trim();
+    if (_secretStore.isAvailable) {
+      await _writeSecret(
+        service: BenchVaultSecretServices.openAi,
+        account: BenchVaultSecretAccounts.openAiApiKey,
+        value: apiKey,
+      );
+      await _writeOpenAiMetadata(model);
+      return;
+    }
     await credentialsDir.create(recursive: true);
     await _openAiSearchFile.writeAsString(
       ['OPENAI_API_KEY=$apiKey', 'OPENAI_MODEL=$model', ''].join('\n'),
@@ -1485,7 +1527,7 @@ class BackupService {
   }
 
   Future<LabArchivesClient> _client() async {
-    final creds = await _loadEnv(_credentialFile);
+    final creds = await _loadLabArchivesCredentials();
     final user = await _loadEnv(_userFile);
     final accessId = creds['LABARCHIVES_GOV_LOGIN_ID'];
     final accessKey = creds['LABARCHIVES_GOV_ACCESS_KEY'];
@@ -1500,6 +1542,164 @@ class BackupService {
       accessKey: accessKey,
       uid: uid,
     );
+  }
+
+  Future<Map<String, String>> _loadLabArchivesCredentials() async {
+    if (_secretStore.isAvailable) {
+      final accessId = await _readSecret(
+        service: BenchVaultSecretServices.labArchives,
+        account: BenchVaultSecretAccounts.labArchivesAccessId,
+      );
+      final accessKey = await _readSecret(
+        service: BenchVaultSecretServices.labArchives,
+        account: BenchVaultSecretAccounts.labArchivesAccessKey,
+      );
+      if (accessId != null &&
+          accessId.trim().isNotEmpty &&
+          accessKey != null &&
+          accessKey.trim().isNotEmpty) {
+        return {
+          'LABARCHIVES_GOV_LOGIN_ID': accessId,
+          'LABARCHIVES_GOV_ACCESS_KEY': accessKey,
+        };
+      }
+    }
+
+    final creds = await _loadEnv(_credentialFile);
+    final accessId = creds['LABARCHIVES_GOV_LOGIN_ID'];
+    final accessKey = creds['LABARCHIVES_GOV_ACCESS_KEY'];
+    if (_secretStore.isAvailable &&
+        accessId != null &&
+        accessId.isNotEmpty &&
+        accessKey != null &&
+        accessKey.isNotEmpty) {
+      await _writeLabArchivesSecrets(accessId: accessId, accessKey: accessKey);
+      await _writeLabArchivesCredentialMetadata(
+        email: creds['LABARCHIVES_GOV_EMAIL'],
+      );
+    }
+    return creds;
+  }
+
+  Future<bool> _hasSecureLabArchivesCredentials() async {
+    if (!_secretStore.isAvailable) {
+      return false;
+    }
+    final accessId = await _readSecret(
+      service: BenchVaultSecretServices.labArchives,
+      account: BenchVaultSecretAccounts.labArchivesAccessId,
+    );
+    final accessKey = await _readSecret(
+      service: BenchVaultSecretServices.labArchives,
+      account: BenchVaultSecretAccounts.labArchivesAccessKey,
+    );
+    return accessId != null &&
+        accessId.trim().isNotEmpty &&
+        accessKey != null &&
+        accessKey.trim().isNotEmpty;
+  }
+
+  Future<bool> _hasLabArchivesCredentialFileSecrets() async {
+    if (!await _credentialFile.exists()) {
+      return false;
+    }
+    try {
+      final values = await _loadEnv(_credentialFile);
+      return (values['LABARCHIVES_GOV_LOGIN_ID'] ?? '').isNotEmpty &&
+          (values['LABARCHIVES_GOV_ACCESS_KEY'] ?? '').isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> _readSecret({
+    required String service,
+    required String account,
+  }) async {
+    try {
+      return await _secretStore.read(service: service, account: account);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeSecret({
+    required String service,
+    required String account,
+    required String value,
+  }) async {
+    await _secretStore.write(service: service, account: account, value: value);
+  }
+
+  Future<void> _deleteSecret({
+    required String service,
+    required String account,
+  }) async {
+    try {
+      await _secretStore.delete(service: service, account: account);
+    } catch (_) {
+      return;
+    }
+  }
+
+  Future<void> _writeLabArchivesSecrets({
+    required String accessId,
+    required String accessKey,
+  }) async {
+    await _writeSecret(
+      service: BenchVaultSecretServices.labArchives,
+      account: BenchVaultSecretAccounts.labArchivesAccessId,
+      value: accessId,
+    );
+    await _writeSecret(
+      service: BenchVaultSecretServices.labArchives,
+      account: BenchVaultSecretAccounts.labArchivesAccessKey,
+      value: accessKey,
+    );
+  }
+
+  Future<void> _writeLabArchivesCredentialMetadata({String? email}) async {
+    await credentialsDir.create(recursive: true);
+    await _credentialFile.writeAsString(
+      [
+        'LABARCHIVES_GOV_CREDENTIAL_STORAGE=${_secretStore.storageLabel}',
+        if (email != null && email.trim().isNotEmpty)
+          'LABARCHIVES_GOV_EMAIL=${email.trim()}',
+        '',
+      ].join('\n'),
+    );
+    await _setOwnerOnlyPermissions(_credentialFile);
+  }
+
+  Future<String> _openAiModelFromFile() async {
+    if (!await _openAiSearchFile.exists()) {
+      return OpenAiSearchSettings.defaultModel;
+    }
+    try {
+      final values = await _loadEnv(_openAiSearchFile);
+      final model = values['OPENAI_MODEL'] ?? OpenAiSearchSettings.defaultModel;
+      return model.trim().isEmpty ? OpenAiSearchSettings.defaultModel : model;
+    } catch (_) {
+      return OpenAiSearchSettings.defaultModel;
+    }
+  }
+
+  Future<void> _writeOpenAiMetadata(String model) async {
+    await credentialsDir.create(recursive: true);
+    await _openAiSearchFile.writeAsString(
+      [
+        'OPENAI_KEY_STORAGE=${_secretStore.storageLabel}',
+        'OPENAI_MODEL=$model',
+        '',
+      ].join('\n'),
+    );
+    await _setOwnerOnlyPermissions(_openAiSearchFile);
+  }
+
+  String _credentialStorageLabel() {
+    return _secretStore.isAvailable
+        ? _secretStore.storageLabel
+        : 'local-only setup files';
   }
 
   Future<Map<String, String>> _loadEnv(File file) async {
@@ -1590,15 +1790,23 @@ class BackupService {
     UserAccessSnapshot snapshot,
   ) async {
     await credentialsDir.create(recursive: true);
-    await _credentialFile.writeAsString(
-      [
-        'LABARCHIVES_GOV_LOGIN_ID=${input.accessId}',
-        'LABARCHIVES_GOV_ACCESS_KEY=${input.accessKey}',
-        'LABARCHIVES_GOV_EMAIL=${input.email}',
-        '',
-      ].join('\n'),
-    );
-    await _setOwnerOnlyPermissions(_credentialFile);
+    if (_secretStore.isAvailable) {
+      await _writeLabArchivesSecrets(
+        accessId: input.accessId,
+        accessKey: input.accessKey,
+      );
+      await _writeLabArchivesCredentialMetadata(email: input.email);
+    } else {
+      await _credentialFile.writeAsString(
+        [
+          'LABARCHIVES_GOV_LOGIN_ID=${input.accessId}',
+          'LABARCHIVES_GOV_ACCESS_KEY=${input.accessKey}',
+          'LABARCHIVES_GOV_EMAIL=${input.email}',
+          '',
+        ].join('\n'),
+      );
+      await _setOwnerOnlyPermissions(_credentialFile);
+    }
 
     await _userFile.writeAsString(
       [

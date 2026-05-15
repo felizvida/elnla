@@ -190,12 +190,17 @@ exact phrases, or verified backups only.
 Without an OpenAI API key, or if the OpenAI request fails, search uses local
 fuzzy matching and shows the best matching pages. With an OpenAI API key, BenchVault
 sends the best matching excerpts to OpenAI and returns a concise answer with
-page citations. The OpenAI key is stored locally in the ignored credentials
-folder.
+page citations. On macOS app launches, the OpenAI key is stored in macOS
+Keychain when available; non-secret search settings remain in the ignored local
+setup folder.
 
 > Credentials, OpenAI keys, notebook IDs, access XML, source PDFs, and raw backup
 > archives should remain local-only. Public GitHub files should contain only
 > examples or placeholders.
+
+On macOS, BenchVault uses Keychain for newly saved LabArchives access
+credentials and OpenAI API keys when available. Setup metadata, UID records,
+notebook indexes, schedules, and integrity ledgers remain local-only files.
 
 Useful searches include:
 
