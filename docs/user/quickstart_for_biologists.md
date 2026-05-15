@@ -22,7 +22,9 @@ instrument output, and other bench-research attachments.
 - Backs up every notebook that your LabArchives account is allowed to back up.
 - Keeps the original LabArchives archive file for preservation.
 - Verifies full-size original attachment files after backup by byte size.
-- Creates a readable local copy for browsing pages and entries.
+- Creates a readable Markdown copy and search index for each backup.
+- Lets you search backed-up notebooks with local keyword matching, or with
+  natural-language answers when you add an OpenAI API key.
 - Lets you schedule routine backups while the app is open.
 - Stores credentials and backups locally, not in GitHub.
 
@@ -34,6 +36,7 @@ You need:
 - Your LabArchives API access ID.
 - Your LabArchives API access key.
 - A local folder where routine backup copies should be saved.
+- An OpenAI API key if you want natural-language notebook search.
 
 At NIH and NICHD, lab notebook ownership is restricted to lab chiefs, also known
 as PIs. The LabArchives full-size notebook backup API is owner-only. If you can
@@ -50,9 +53,10 @@ approved institutional storage location.
 2. Enter your LabArchives email address.
 3. Enter your access ID and access key.
 4. Choose the folder where routine backup copies should be stored.
-5. Click `Connect`.
-6. Complete the LabArchives authorization step in the browser.
-7. Return to ELNLA after authorization is captured.
+5. Enter an OpenAI API key if you want natural-language notebook search.
+6. Click `Connect`.
+7. Complete the LabArchives authorization step in the browser.
+8. Return to ELNLA after authorization is captured.
 
 If browser authorization does not complete cleanly, paste the LabArchives auth
 code into the setup screen and click `Use Auth Code`.
@@ -84,6 +88,23 @@ payloads. A successful backup means:
 The manifest is named `original_files_manifest.json`. It includes relative file
 paths, expected byte counts, actual byte counts, and SHA-256 checksums.
 
+## Search Backed-Up Notebooks
+
+Use the search field above the notebook viewer to ask about backed-up content.
+ELNLA always creates a local readable copy first, then searches that copy.
+
+Without an OpenAI API key, search uses local keyword matching and shows the best
+matching pages. With an OpenAI API key, ELNLA sends the best matching excerpts
+to OpenAI and returns a concise answer with page citations. The OpenAI key is
+stored locally in the ignored credentials folder.
+
+Useful searches include:
+
+- `Which pages mention zebrafish hypoxia imaging?`
+- `Find attachment records for qPCR or RNA-seq runs.`
+- `What did the PI reviewer ask us to repeat?`
+- `Show pages about freezer transfer or chain of custody.`
+
 ## Set Automatic Backups
 
 ![Automatic backup schedule](../assets/screenshots/elnla-schedule.png){width=80%}
@@ -113,6 +134,9 @@ notebooks/
             notebook.7z
             extracted/
             render_notebook.json
+            readable/
+              notebook.md
+              search_chunks.jsonl
             original_files_manifest.json
             backup_record.json
 runs/

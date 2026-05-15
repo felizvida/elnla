@@ -5,6 +5,8 @@ import 'dart:io';
 import 'backup_models.dart';
 import 'backup_parser.dart';
 import 'labarchives_client.dart';
+import 'readable_notebook_exporter.dart';
+import 'search_models.dart';
 import 'setup_models.dart';
 
 typedef ProgressCallback = void Function(String message);
@@ -31,6 +33,8 @@ class BackupService {
 
   File get _settingsFile =>
       File(_join(credentialsDir.path, 'elnla_settings.json'));
+
+  File get _openAiSearchFile => File(_join(credentialsDir.path, 'openai.env'));
 
   Future<LocalSetupStatus> loadSetupStatus() async {
     var notebookCount = 0;
@@ -82,6 +86,37 @@ class BackupService {
       const JsonEncoder.withIndent('  ').convert(cleanSettings.toJson()),
     );
     await _setOwnerOnlyPermissions(_settingsFile);
+  }
+
+  Future<OpenAiSearchSettings?> loadOpenAiSearchSettings() async {
+    if (!await _openAiSearchFile.exists()) {
+      return null;
+    }
+    final values = await _loadEnv(_openAiSearchFile);
+    final apiKey = values['OPENAI_API_KEY'] ?? '';
+    final model = values['OPENAI_MODEL'] ?? OpenAiSearchSettings.defaultModel;
+    if (apiKey.trim().isEmpty) {
+      return null;
+    }
+    return OpenAiSearchSettings(apiKey: apiKey, model: model);
+  }
+
+  Future<void> saveOpenAiSearchSettings(OpenAiSearchSettings settings) async {
+    final apiKey = settings.apiKey.trim();
+    if (apiKey.isEmpty) {
+      if (await _openAiSearchFile.exists()) {
+        await _openAiSearchFile.delete();
+      }
+      return;
+    }
+    final model = settings.model.trim().isEmpty
+        ? OpenAiSearchSettings.defaultModel
+        : settings.model.trim();
+    await credentialsDir.create(recursive: true);
+    await _openAiSearchFile.writeAsString(
+      ['OPENAI_API_KEY=$apiKey', 'OPENAI_MODEL=$model', ''].join('\n'),
+    );
+    await _setOwnerOnlyPermissions(_openAiSearchFile);
   }
 
   Future<UserAccessSnapshot> authorizeWithAuthCode(
@@ -158,6 +193,8 @@ class BackupService {
           accessId: cleanInput.accessId,
           accessKey: cleanInput.accessKey,
           backupRootPath: cleanInput.backupRootPath,
+          openAiApiKey: cleanInput.openAiApiKey,
+          openAiModel: cleanInput.openAiModel,
         ),
         snapshot,
       );
@@ -224,6 +261,80 @@ class BackupService {
     final file = await _resolveBackupFile(record.renderPath);
     final json = jsonDecode(await file.readAsString()) as Map<String, Object?>;
     return RenderNotebook.fromJson(json);
+  }
+
+  Future<BackupRecord> ensureReadableCopy(BackupRecord record) async {
+    final existingMarkdown = record.readablePath == null
+        ? null
+        : await _resolveBackupFile(record.readablePath!);
+    final existingIndex = record.searchIndexPath == null
+        ? null
+        : await _resolveBackupFile(record.searchIndexPath!);
+    if (existingMarkdown != null &&
+        existingIndex != null &&
+        await existingMarkdown.exists() &&
+        await existingIndex.exists()) {
+      return record;
+    }
+
+    final renderFile = await _resolveBackupFile(record.renderPath);
+    final notebook = await loadRenderNotebook(record);
+    final backupRoot = await _backupRootForFile(renderFile);
+    final artifacts = await ReadableNotebookExporter().write(
+      record: record,
+      notebook: notebook,
+      runDir: renderFile.parent,
+      backupRootPath: backupRoot.path,
+    );
+    final updated = record.copyWith(
+      readablePath: artifacts.markdownPath,
+      searchIndexPath: artifacts.searchIndexPath,
+    );
+    final recordFile = File(
+      _join(renderFile.parent.path, 'backup_record.json'),
+    );
+    if (await recordFile.exists()) {
+      await recordFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(updated.toJson()),
+      );
+    }
+    return updated;
+  }
+
+  Future<List<NotebookSearchChunk>> loadSearchChunks(
+    BackupRecord record,
+  ) async {
+    final readableRecord = await ensureReadableCopy(record);
+    final indexPath = readableRecord.searchIndexPath;
+    if (indexPath == null || indexPath.isEmpty) {
+      return const [];
+    }
+    final file = await _resolveBackupFile(indexPath);
+    if (!await file.exists()) {
+      return const [];
+    }
+    final chunks = <NotebookSearchChunk>[];
+    for (final line in await file.readAsLines()) {
+      if (line.trim().isEmpty) {
+        continue;
+      }
+      final json = jsonDecode(line) as Map<String, Object?>;
+      chunks.add(NotebookSearchChunk.fromJson(json));
+    }
+    return chunks;
+  }
+
+  Future<List<NotebookSearchChunk>> loadAllSearchChunks() async {
+    final records = await loadBackups();
+    final chunks = <NotebookSearchChunk>[];
+    for (final record in records) {
+      try {
+        chunks.addAll(await loadSearchChunks(record));
+      } catch (_) {
+        continue;
+      }
+    }
+    return chunks;
   }
 
   Future<File> restoreAttachment({
@@ -324,7 +435,7 @@ class BackupService {
         );
         await renderFile.writeAsString(renderNotebook.toPrettyJson());
 
-        final record = BackupRecord(
+        var record = BackupRecord(
           id: '${session}_${_safeName(notebook.name)}',
           notebookName: renderNotebook.name == 'Untitled notebook'
               ? notebook.name
@@ -334,6 +445,17 @@ class BackupService {
           renderPath: _relativeTo(backupRoot.path, renderFile.path),
           pageCount: renderNotebook.nodes.where((node) => node.isPage).length,
           contentVerification: contentVerification,
+        );
+        onProgress?.call('Writing readable search copy for ${notebook.name}');
+        final readable = await ReadableNotebookExporter().write(
+          record: record,
+          notebook: renderNotebook,
+          runDir: notebookDir,
+          backupRootPath: backupRoot.path,
+        );
+        record = record.copyWith(
+          readablePath: readable.markdownPath,
+          searchIndexPath: readable.searchIndexPath,
         );
         final recordFile = File(_join(notebookDir.path, 'backup_record.json'));
         await recordFile.writeAsString(
@@ -441,6 +563,8 @@ class BackupService {
       accessKey: accessKey,
       backupRootPath: backupRootPath,
       authCode: input.authCode?.trim(),
+      openAiApiKey: input.openAiApiKey?.trim(),
+      openAiModel: input.openAiModel?.trim(),
     );
   }
 
@@ -530,6 +654,17 @@ class BackupService {
     await saveBackupSettings(
       currentSettings.copyWith(backupRootPath: input.backupRootPath),
     );
+    final openAiApiKey = input.openAiApiKey?.trim() ?? '';
+    if (openAiApiKey.isNotEmpty) {
+      await saveOpenAiSearchSettings(
+        OpenAiSearchSettings(
+          apiKey: openAiApiKey,
+          model: input.openAiModel?.trim().isNotEmpty == true
+              ? input.openAiModel!.trim()
+              : OpenAiSearchSettings.defaultModel,
+        ),
+      );
+    }
   }
 
   Future<Directory> _configuredBackupDir() async {
@@ -544,6 +679,17 @@ class BackupService {
       return [configured];
     }
     return [configured, legacy];
+  }
+
+  Future<Directory> _backupRootForFile(File file) async {
+    final normalizedPath = file.absolute.path;
+    for (final directory in await _backupSearchDirs()) {
+      final normalizedRoot = directory.absolute.path;
+      if (normalizedPath.startsWith(normalizedRoot)) {
+        return directory.absolute;
+      }
+    }
+    return root.absolute;
   }
 
   Future<File> _resolveBackupFile(String path) async {

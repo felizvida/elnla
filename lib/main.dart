@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import 'src/backup_models.dart';
 import 'src/backup_service.dart';
+import 'src/notebook_search_service.dart';
+import 'src/search_models.dart';
 import 'src/setup_models.dart';
 
 void main() {
@@ -56,9 +58,13 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   DateTime? _nextAutomaticBackup;
   String _status = 'Loading local LabArchives context...';
   final List<String> _log = <String>[];
+  final _searchController = TextEditingController();
+  NotebookSearchResult? _searchResult;
+  bool _openAiSearchReady = false;
   bool _busy = false;
   bool _setupBusy = false;
   bool _restoreBusy = false;
+  bool _searchBusy = false;
 
   @override
   void initState() {
@@ -71,6 +77,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   @override
   void dispose() {
     _scheduleTimer?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -82,6 +89,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     try {
       final setupStatus = await _service.loadSetupStatus();
       final backupSettings = await _service.loadBackupSettings();
+      final openAiSettings = await _service.loadOpenAiSearchSettings();
       final notebooks = setupStatus.hasNotebookIndex
           ? await _service.loadNotebookSummaries()
           : <NotebookSummary>[];
@@ -93,6 +101,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
         _notebooks = notebooks;
         _backups = backups;
         _selectedBackup = backups.isEmpty ? null : backups.first;
+        _openAiSearchReady = openAiSettings?.hasApiKey ?? false;
         _status = !setupStatus.isReady
             ? 'Setup needed: connect LabArchives credentials.'
             : notebooks.isEmpty
@@ -106,6 +115,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     } catch (error) {
       setState(() {
         _status = 'Setup needed: $error';
+        _openAiSearchReady = false;
         _setupStatus = const LocalSetupStatus(
           hasCredentials: false,
           hasUserAccess: false,
@@ -164,6 +174,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = notebook.firstPage;
+      _openAiSearchReady = false;
       _log
         ..clear()
         ..addAll([
@@ -184,6 +195,86 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       _selectedNotebook = notebook;
       _selectedNode = notebook.firstPage;
     });
+  }
+
+  Future<void> _selectSearchHit(NotebookSearchHit hit) async {
+    BackupRecord? backup;
+    for (final candidate in _backups) {
+      if (candidate.id == hit.chunk.backupId) {
+        backup = candidate;
+        break;
+      }
+    }
+    if (backup == null) {
+      return;
+    }
+    final notebook = await _service.loadRenderNotebook(backup);
+    RenderNode? node;
+    for (final candidate in notebook.nodes) {
+      if (candidate.id == hit.chunk.nodeId) {
+        node = candidate;
+        break;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _selectedBackup = backup;
+      _selectedNotebook = notebook;
+      _selectedNode = node ?? notebook.firstPage;
+    });
+  }
+
+  Future<void> _runSearch() async {
+    if (_searchBusy) {
+      return;
+    }
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _searchResult = const NotebookSearchResult(
+          query: '',
+          answer: 'Enter a notebook search question.',
+          hits: [],
+          usedOpenAi: false,
+        );
+      });
+      return;
+    }
+    setState(() {
+      _searchBusy = true;
+      _status = 'Searching backed-up notebooks...';
+    });
+    try {
+      final result = await NotebookSearchService(_service).search(query);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _searchResult = result;
+        _status = result.usedOpenAi
+            ? 'Natural-language notebook search complete.'
+            : 'Local notebook search complete.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _searchResult = NotebookSearchResult(
+          query: query,
+          answer: 'Search failed: $error',
+          hits: const [],
+          usedOpenAi: false,
+        );
+        _status = 'Notebook search failed: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _searchBusy = false);
+      }
+    }
   }
 
   Future<void> _runBackup({bool automatic = false}) async {
@@ -388,6 +479,32 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     });
   }
 
+  Future<void> _showSearchSettingsDialog() async {
+    final current =
+        await _service.loadOpenAiSearchSettings() ??
+        const OpenAiSearchSettings(apiKey: '');
+    if (!mounted) {
+      return;
+    }
+    final updated = await showDialog<OpenAiSearchSettings>(
+      context: context,
+      builder: (context) => _SearchSettingsDialog(initial: current),
+    );
+    if (updated == null) {
+      return;
+    }
+    await _service.saveOpenAiSearchSettings(updated);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _openAiSearchReady = updated.hasApiKey;
+      _status = updated.hasApiKey
+          ? 'OpenAI notebook search key saved locally.'
+          : 'OpenAI notebook search key removed.';
+    });
+  }
+
   void _rescheduleAutomaticBackup() {
     _scheduleTimer?.cancel();
     _scheduleTimer = null;
@@ -451,6 +568,17 @@ class _ElnlaHomeState extends State<ElnlaHome> {
                 icon: const Icon(Icons.schedule_outlined),
               ),
               IconButton(
+                tooltip: 'Notebook search settings',
+                onPressed: _busy || _setupBusy || _searchBusy
+                    ? null
+                    : _showSearchSettingsDialog,
+                icon: Icon(
+                  _openAiSearchReady
+                      ? Icons.manage_search
+                      : Icons.manage_search_outlined,
+                ),
+              ),
+              IconButton(
                 tooltip: 'Refresh local backups',
                 onPressed: _busy || _setupBusy
                     ? null
@@ -479,8 +607,18 @@ class _ElnlaHomeState extends State<ElnlaHome> {
               _StatusStrip(
                 status: _status,
                 detail: _scheduleDetail,
-                busy: _busy || _setupBusy || _restoreBusy,
+                busy: _busy || _setupBusy || _restoreBusy || _searchBusy,
               ),
+              if (_setupStatus?.isReady ?? false)
+                _SearchPanel(
+                  controller: _searchController,
+                  result: _searchResult,
+                  busy: _searchBusy,
+                  openAiReady: _openAiSearchReady,
+                  onSearch: _runSearch,
+                  onSettings: _showSearchSettingsDialog,
+                  onSelectHit: _selectSearchHit,
+                ),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -706,8 +844,13 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
   final _accessId = TextEditingController();
   final _accessKey = TextEditingController();
   final _authCode = TextEditingController();
+  final _openAiKey = TextEditingController();
+  final _openAiModel = TextEditingController(
+    text: OpenAiSearchSettings.defaultModel,
+  );
   late final TextEditingController _backupRoot;
   bool _showKey = false;
+  bool _showOpenAiKey = false;
 
   @override
   void initState() {
@@ -721,6 +864,8 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
     _accessId.dispose();
     _accessKey.dispose();
     _authCode.dispose();
+    _openAiKey.dispose();
+    _openAiModel.dispose();
     _backupRoot.dispose();
     super.dispose();
   }
@@ -739,6 +884,8 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
       accessKey: _accessKey.text,
       backupRootPath: _backupRoot.text,
       authCode: _authCode.text,
+      openAiApiKey: _openAiKey.text,
+      openAiModel: _openAiModel.text,
     );
   }
 
@@ -839,6 +986,43 @@ class _CredentialSetupPanelState extends State<_CredentialSetupPanel> {
                     onPressed: widget.busy ? null : _chooseBackupFolder,
                     icon: const Icon(Icons.drive_folder_upload_outlined),
                   ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _openAiKey,
+                enabled: !widget.busy,
+                obscureText: !_showOpenAiKey,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: 'OpenAI API key',
+                  prefixIcon: const Icon(Icons.psychology_alt_outlined),
+                  suffixIcon: IconButton(
+                    tooltip: _showOpenAiKey
+                        ? 'Hide OpenAI key'
+                        : 'Show OpenAI key',
+                    onPressed: widget.busy
+                        ? null
+                        : () =>
+                              setState(() => _showOpenAiKey = !_showOpenAiKey),
+                    icon: Icon(
+                      _showOpenAiKey
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _openAiModel,
+                enabled: !widget.busy,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'OpenAI model',
+                  prefixIcon: Icon(Icons.auto_awesome_outlined),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1044,6 +1228,258 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
           child: const Text('Save'),
         ),
       ],
+    );
+  }
+}
+
+class _SearchSettingsDialog extends StatefulWidget {
+  const _SearchSettingsDialog({required this.initial});
+
+  final OpenAiSearchSettings initial;
+
+  @override
+  State<_SearchSettingsDialog> createState() => _SearchSettingsDialogState();
+}
+
+class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
+  late final TextEditingController _apiKey;
+  late final TextEditingController _model;
+  bool _showKey = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiKey = TextEditingController(text: widget.initial.apiKey);
+    _model = TextEditingController(
+      text: widget.initial.model.trim().isEmpty
+          ? OpenAiSearchSettings.defaultModel
+          : widget.initial.model,
+    );
+  }
+
+  @override
+  void dispose() {
+    _apiKey.dispose();
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Notebook Search'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _apiKey,
+              obscureText: !_showKey,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'OpenAI API key',
+                prefixIcon: const Icon(Icons.psychology_alt_outlined),
+                suffixIcon: IconButton(
+                  tooltip: _showKey ? 'Hide OpenAI key' : 'Show OpenAI key',
+                  onPressed: () => setState(() => _showKey = !_showKey),
+                  icon: Icon(
+                    _showKey
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _model,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'OpenAI model',
+                prefixIcon: Icon(Icons.auto_awesome_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Saved locally only. Matching notebook excerpts are sent to OpenAI when natural-language search runs.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        OutlinedButton(
+          onPressed: () => Navigator.of(
+            context,
+          ).pop(OpenAiSearchSettings(apiKey: '', model: _model.text.trim())),
+          child: const Text('Remove Key'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(
+            OpenAiSearchSettings(
+              apiKey: _apiKey.text.trim(),
+              model: _model.text.trim(),
+            ),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SearchPanel extends StatelessWidget {
+  const _SearchPanel({
+    required this.controller,
+    required this.result,
+    required this.busy,
+    required this.openAiReady,
+    required this.onSearch,
+    required this.onSettings,
+    required this.onSelectHit,
+  });
+
+  final TextEditingController controller;
+  final NotebookSearchResult? result;
+  final bool busy;
+  final bool openAiReady;
+  final VoidCallback onSearch;
+  final VoidCallback onSettings;
+  final ValueChanged<NotebookSearchHit> onSelectHit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final searchResult = result;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: !busy,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => onSearch(),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: 'Ask across backed-up notebooks',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: openAiReady
+                    ? 'Natural-language search is enabled'
+                    : 'Add OpenAI key for natural-language search',
+                child: IconButton(
+                  onPressed: busy ? null : onSettings,
+                  icon: Icon(
+                    openAiReady
+                        ? Icons.psychology_alt
+                        : Icons.psychology_alt_outlined,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              FilledButton.icon(
+                onPressed: busy ? null : onSearch,
+                icon: busy
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.manage_search),
+                label: const Text('Search'),
+              ),
+            ],
+          ),
+          if (searchResult != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(
+                  searchResult.usedOpenAi
+                      ? Icons.auto_awesome
+                      : Icons.manage_search_outlined,
+                  size: 16,
+                  color: colors.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  searchResult.usedOpenAi ? 'OpenAI answer' : 'Local results',
+                  style: textTheme.labelMedium?.copyWith(color: colors.primary),
+                ),
+                if (searchResult.warning != null) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      searchResult.warning!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodySmall?.copyWith(color: colors.error),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            SelectableText(searchResult.answer),
+            if (searchResult.hits.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: searchResult.hits
+                    .take(6)
+                    .map(
+                      (hit) => ActionChip(
+                        avatar: const Icon(Icons.article_outlined, size: 16),
+                        label: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 240),
+                          child: Text(
+                            hit.chunk.path,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        onPressed: () => onSelectHit(hit),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ],
+        ],
+      ),
     );
   }
 }

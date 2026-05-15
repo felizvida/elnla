@@ -20,6 +20,8 @@ class BackupRecord {
     required this.archivePath,
     required this.renderPath,
     required this.pageCount,
+    this.readablePath,
+    this.searchIndexPath,
     this.contentVerification,
   });
 
@@ -29,6 +31,8 @@ class BackupRecord {
   final String archivePath;
   final String renderPath;
   final int pageCount;
+  final String? readablePath;
+  final String? searchIndexPath;
   final BackupContentVerification? contentVerification;
 
   String get createdAtLabel {
@@ -44,6 +48,8 @@ class BackupRecord {
     'archivePath': archivePath,
     'renderPath': renderPath,
     'pageCount': pageCount,
+    'readablePath': readablePath,
+    'searchIndexPath': searchIndexPath,
     'contentVerification': contentVerification?.toJson(),
   };
 
@@ -55,11 +61,37 @@ class BackupRecord {
       archivePath: json['archivePath'] as String,
       renderPath: json['renderPath'] as String,
       pageCount: json['pageCount'] as int,
+      readablePath: json['readablePath'] as String?,
+      searchIndexPath: json['searchIndexPath'] as String?,
       contentVerification: json['contentVerification'] is Map<String, Object?>
           ? BackupContentVerification.fromJson(
               json['contentVerification'] as Map<String, Object?>,
             )
           : null,
+    );
+  }
+
+  BackupRecord copyWith({
+    String? id,
+    String? notebookName,
+    DateTime? createdAt,
+    String? archivePath,
+    String? renderPath,
+    int? pageCount,
+    String? readablePath,
+    String? searchIndexPath,
+    BackupContentVerification? contentVerification,
+  }) {
+    return BackupRecord(
+      id: id ?? this.id,
+      notebookName: notebookName ?? this.notebookName,
+      createdAt: createdAt ?? this.createdAt,
+      archivePath: archivePath ?? this.archivePath,
+      renderPath: renderPath ?? this.renderPath,
+      pageCount: pageCount ?? this.pageCount,
+      readablePath: readablePath ?? this.readablePath,
+      searchIndexPath: searchIndexPath ?? this.searchIndexPath,
+      contentVerification: contentVerification ?? this.contentVerification,
     );
   }
 }

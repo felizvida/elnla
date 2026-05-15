@@ -28,6 +28,10 @@ in the app and in the documentation so backup failures are easier to understand.
   the LabArchives API.
 - Keeps the original LabArchives `.7z` archive for preservation.
 - Extracts and indexes notebook pages for local read-only viewing.
+- Writes a separate readable Markdown copy plus JSONL search chunks for every
+  successful backup.
+- Provides notebook search with local keyword fallback and OpenAI-powered
+  natural-language answers when the user saves an OpenAI API key locally.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
 - Stores credentials, user access XML, notebook IDs, schedules, and backups in

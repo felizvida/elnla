@@ -21,6 +21,8 @@ class LabArchivesSetupInput {
     required this.accessKey,
     required this.backupRootPath,
     this.authCode,
+    this.openAiApiKey,
+    this.openAiModel,
   });
 
   final String email;
@@ -28,6 +30,8 @@ class LabArchivesSetupInput {
   final String accessKey;
   final String backupRootPath;
   final String? authCode;
+  final String? openAiApiKey;
+  final String? openAiModel;
 }
 
 class UserAccessSnapshot {
