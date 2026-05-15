@@ -62,6 +62,8 @@ class BackupService {
   File get _integrityLedgerFile =>
       File(_join(credentialsDir.path, 'integrity_ledger.jsonl'));
 
+  File get _backupLockFile => File(_join(credentialsDir.path, 'backup.lock'));
+
   Future<LocalSetupStatus> loadSetupStatus() async {
     var notebookCount = 0;
     if (await _notebooksFile.exists()) {
@@ -329,11 +331,13 @@ class BackupService {
 
   Future<PreflightCheck> _archiveExtractorPreflight() async {
     final command = await _findArchiveExtractor();
+    final sqliteCommand = await _findCommand('sqlite3');
     if (command != null) {
       return PreflightCheck(
         id: 'archive_extractor',
         title: 'Archive extraction',
-        detail: 'Archive extractor available: $command.',
+        detail:
+            'Archive extractor available: $command. SQLite backup compatibility: ${sqliteCommand ?? 'not available'}.',
         status: PreflightStatus.pass,
       );
     }
@@ -349,16 +353,24 @@ class BackupService {
 
   Future<String?> _findArchiveExtractor() async {
     for (final command in const ['bsdtar', 'tar', '7z']) {
-      try {
-        final result = Platform.isWindows
-            ? await Process.run('where', [command])
-            : await Process.run('which', [command]);
-        if (result.exitCode == 0) {
-          return command;
-        }
-      } catch (_) {
-        continue;
+      final found = await _findCommand(command);
+      if (found != null) {
+        return found;
       }
+    }
+    return null;
+  }
+
+  Future<String?> _findCommand(String command) async {
+    try {
+      final result = Platform.isWindows
+          ? await Process.run('where', [command])
+          : await Process.run('which', [command]);
+      if (result.exitCode == 0) {
+        return command;
+      }
+    } catch (_) {
+      return null;
     }
     return null;
   }
@@ -1121,6 +1133,18 @@ class BackupService {
     return _resolveOriginalAttachment(record, part);
   }
 
+  Future<File?> resolveAttachmentThumbnailFile({
+    required BackupRecord record,
+    required RenderPart part,
+  }) async {
+    final thumbnailPath = part.attachmentThumbnailPath;
+    if (thumbnailPath == null || thumbnailPath.trim().isEmpty) {
+      return null;
+    }
+    final file = await _resolveBackupFile(thumbnailPath);
+    return await file.exists() ? file : null;
+  }
+
   Future<String?> loadAttachmentTextPreview({
     required BackupRecord record,
     required RenderPart part,
@@ -1146,6 +1170,26 @@ class BackupService {
   Future<List<BackupRecord>> backupAllNotebooks({
     ProgressCallback? onProgress,
   }) async {
+    await credentialsDir.create(recursive: true);
+    final lock = await _backupLockFile.open(mode: FileMode.write);
+    var locked = false;
+    try {
+      onProgress?.call('Waiting for exclusive BenchVault backup lock...');
+      await lock.lock();
+      locked = true;
+      onProgress?.call('Backup lock acquired.');
+      return await _backupAllNotebooksUnlocked(onProgress: onProgress);
+    } finally {
+      if (locked) {
+        await lock.unlock();
+      }
+      await lock.close();
+    }
+  }
+
+  Future<List<BackupRecord>> _backupAllNotebooksUnlocked({
+    ProgressCallback? onProgress,
+  }) async {
     final notebooks = await loadNotebookSummaries();
     final client = await _client();
     final parser = BackupParser();
@@ -1166,9 +1210,13 @@ class BackupService {
       onProgress?.call(message);
     }
 
-    for (final notebook in notebooks) {
+    for (var index = 0; index < notebooks.length; index++) {
+      final notebook = notebooks[index];
+      final queueIndex = index + 1;
+      final startedAt = DateTime.now().toUtc();
       Directory? notebookDir;
       try {
+        emit('Queued $queueIndex/${notebooks.length}: ${notebook.name}');
         emit('Downloading ${notebook.name}');
         notebookDir = Directory(
           _join(
@@ -1250,6 +1298,10 @@ class BackupService {
             category: BackupFailureCategory.none,
             message: 'Backed up successfully.',
             backupRecordId: record.id,
+            queueIndex: queueIndex,
+            totalQueueCount: notebooks.length,
+            startedAt: startedAt,
+            completedAt: DateTime.now().toUtc(),
             pageCount: record.pageCount,
             archiveBytes: contentVerification.archiveBytes,
             verifiedOriginalAttachmentCount:
@@ -1271,6 +1323,10 @@ class BackupService {
             category: failure.category,
             message: failure.message,
             nextAction: failure.nextAction,
+            queueIndex: queueIndex,
+            totalQueueCount: notebooks.length,
+            startedAt: startedAt,
+            completedAt: DateTime.now().toUtc(),
           ),
         );
         emit('Skipped ${notebook.name}: ${failure.message}');

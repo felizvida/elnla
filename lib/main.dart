@@ -3274,6 +3274,13 @@ class _BackupOutcomeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final tone = _backupOutcomeTone(context, outcome);
+    final queueLabel =
+        outcome.queueIndex == null || outcome.totalQueueCount == null
+        ? null
+        : '${outcome.queueIndex}/${outcome.totalQueueCount}';
+    final durationLabel = outcome.duration == null
+        ? null
+        : _formatDuration(outcome.duration!);
     final detail = outcome.isSuccess
         ? outcome.summary
         : '${outcome.category.label}: ${outcome.summary}';
@@ -3328,7 +3335,21 @@ class _BackupOutcomeRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            _StatusPill(label: outcome.status.label, color: tone),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.end,
+              children: [
+                if (queueLabel != null)
+                  _StatusPill(
+                    label: queueLabel,
+                    color: colors.onSurfaceVariant,
+                  ),
+                if (durationLabel != null)
+                  _StatusPill(label: durationLabel, color: colors.secondary),
+                _StatusPill(label: outcome.status.label, color: tone),
+              ],
+            ),
           ],
         ),
       ),
@@ -3528,6 +3549,10 @@ class _EntryViewer extends StatelessWidget {
                       service: service,
                       backup: backup,
                       part: selected.parts[index - 1],
+                      highlight: _partMatchesSearchHit(
+                        selected.parts[index - 1],
+                        landingHit,
+                      ),
                       onDownloadAttachment: onDownloadAttachment,
                     );
                   },
@@ -3748,12 +3773,14 @@ class _EntryPartView extends StatelessWidget {
     required this.service,
     required this.backup,
     required this.part,
+    required this.highlight,
     required this.onDownloadAttachment,
   });
 
   final BackupService service;
   final BackupRecord? backup;
   final RenderPart part;
+  final bool highlight;
   final ValueChanged<RenderPart> onDownloadAttachment;
 
   @override
@@ -3765,7 +3792,7 @@ class _EntryPartView extends StatelessWidget {
           part.attachmentOriginalPath != null &&
           part.attachmentOriginalPath!.isNotEmpty;
       return DecoratedBox(
-        decoration: _partDecoration(context),
+        decoration: _partDecoration(context, highlight: highlight),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -3802,6 +3829,11 @@ class _EntryPartView extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               _AttachmentSupportBadge(support: support),
+              _AttachmentThumbnail(
+                service: service,
+                backup: backup,
+                part: part,
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -3827,6 +3859,13 @@ class _EntryPartView extends StatelessWidget {
                         : 'External viewer format',
                     color: Theme.of(context).colorScheme.primary,
                   ),
+                  if (part.attachmentThumbnailPath != null &&
+                      part.attachmentThumbnailPath!.isNotEmpty)
+                    _AttachmentEvidenceChip(
+                      icon: Icons.photo_size_select_actual_outlined,
+                      label: 'Thumbnail preserved',
+                      color: _nihCoolAccent,
+                    ),
                   if (part.attachmentSize != null)
                     _AttachmentEvidenceChip(
                       icon: Icons.sd_storage_outlined,
@@ -3839,6 +3878,14 @@ class _EntryPartView extends StatelessWidget {
                 const SizedBox(height: 8),
                 SelectableText(
                   'Original file in backup: ${part.attachmentOriginalPath}',
+                  style: textTheme.bodySmall,
+                ),
+              ],
+              if (part.attachmentThumbnailPath != null &&
+                  part.attachmentThumbnailPath!.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                SelectableText(
+                  'Thumbnail in backup: ${part.attachmentThumbnailPath}',
                   style: textTheme.bodySmall,
                 ),
               ],
@@ -3864,7 +3911,7 @@ class _EntryPartView extends StatelessWidget {
 
     final isHeading = part.kindLabel.toLowerCase().contains('heading');
     return DecoratedBox(
-      decoration: _partDecoration(context),
+      decoration: _partDecoration(context, highlight: highlight),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -3902,12 +3949,91 @@ class _EntryPartView extends StatelessWidget {
     };
   }
 
-  BoxDecoration _partDecoration(BuildContext context) {
+  BoxDecoration _partDecoration(
+    BuildContext context, {
+    required bool highlight,
+  }) {
     final colors = Theme.of(context).colorScheme;
     return BoxDecoration(
-      border: Border.all(color: colors.outlineVariant),
+      border: Border.all(
+        color: highlight ? colors.primary : colors.outlineVariant,
+        width: highlight ? 1.6 : 1,
+      ),
       borderRadius: BorderRadius.circular(8),
-      color: colors.surface,
+      color: highlight
+          ? colors.primaryContainer.withValues(alpha: 0.22)
+          : colors.surface,
+    );
+  }
+}
+
+bool _partMatchesSearchHit(RenderPart part, NotebookSearchHit? hit) {
+  if (hit == null) {
+    return false;
+  }
+  final haystack = [
+    part.kindLabel,
+    part.renderText,
+    part.attachmentName ?? '',
+    part.attachmentContentType ?? '',
+    part.attachmentOriginalPath ?? '',
+  ].join(' ').toLowerCase();
+  final snippetTokens = hit.snippet
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9_.-]+'))
+      .where((token) => token.length >= 4)
+      .take(12);
+  return snippetTokens.any(haystack.contains);
+}
+
+class _AttachmentThumbnail extends StatelessWidget {
+  const _AttachmentThumbnail({
+    required this.service,
+    required this.backup,
+    required this.part,
+  });
+
+  final BackupService service;
+  final BackupRecord? backup;
+  final RenderPart part;
+
+  @override
+  Widget build(BuildContext context) {
+    final record = backup;
+    final thumbnailPath = part.attachmentThumbnailPath;
+    if (record == null || thumbnailPath == null || thumbnailPath.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<File?>(
+      future: service.resolveAttachmentThumbnailFile(
+        record: record,
+        part: part,
+      ),
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (snapshot.connectionState != ConnectionState.done ||
+            file == null ||
+            !file.existsSync()) {
+          return const SizedBox.shrink();
+        }
+        final colors = Theme.of(context).colorScheme;
+        return Container(
+          margin: const EdgeInsets.only(top: 10),
+          constraints: const BoxConstraints(maxHeight: 150),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.outlineVariant),
+            borderRadius: BorderRadius.circular(6),
+            color: colors.surfaceContainerHighest.withValues(alpha: 0.28),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Image.file(
+            file,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+        );
+      },
     );
   }
 }
@@ -3942,6 +4068,18 @@ int _commentCount(RenderNode node) {
 String _pageCountSummary(RenderNode node) {
   final count = node.parts.length;
   return '$count part${count == 1 ? '' : 's'}';
+}
+
+String _formatDuration(Duration duration) {
+  if (duration.inSeconds < 1) {
+    return '${duration.inMilliseconds} ms';
+  }
+  if (duration.inMinutes < 1) {
+    return '${duration.inSeconds} s';
+  }
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds.remainder(60);
+  return '${minutes}m ${seconds}s';
 }
 
 IconData _attachmentOutlineIcon(AttachmentFormatSupport support) {

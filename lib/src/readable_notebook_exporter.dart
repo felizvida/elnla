@@ -105,6 +105,7 @@ class ReadableNotebookExporter {
       ..writeln('- Backup created: `${record.createdAt.toIso8601String()}`')
       ..writeln('- Faithful archive: `${record.archivePath}`')
       ..writeln('- Viewer JSON: `${record.renderPath}`')
+      ..writeln('- Parsed source layout: `${notebook.sourceLayout}`')
       ..writeln('- Search chunks: `$searchIndexPath`');
     final verification = record.contentVerification;
     if (verification != null) {
@@ -145,6 +146,17 @@ class ReadableNotebookExporter {
           final originalPath = part.attachmentOriginalPath;
           if (originalPath != null && originalPath.isNotEmpty) {
             buffer.writeln('- Original payload: `$originalPath`');
+          }
+          final thumbnailPath = part.attachmentThumbnailPath;
+          if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
+            buffer.writeln('- Thumbnail: `$thumbnailPath`');
+          }
+          if (part.attachmentOriginalVersion != null) {
+            buffer.writeln(
+              '- Original payload version: `${part.attachmentOriginalVersion}`',
+            );
+          } else if (part.attachmentVersion != null) {
+            buffer.writeln('- Entry part version: `${part.attachmentVersion}`');
           }
           if (part.renderText.trim().isNotEmpty) {
             buffer
@@ -212,6 +224,15 @@ class ReadableNotebookExporter {
     final originalPath = part.attachmentOriginalPath;
     if (originalPath != null && originalPath.isNotEmpty) {
       pieces.add('original payload $originalPath');
+    }
+    final thumbnailPath = part.attachmentThumbnailPath;
+    if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
+      pieces.add('thumbnail $thumbnailPath');
+    }
+    if (part.attachmentOriginalVersion != null) {
+      pieces.add('original version ${part.attachmentOriginalVersion}');
+    } else if (part.attachmentVersion != null) {
+      pieces.add('entry version ${part.attachmentVersion}');
     }
     return pieces.join('; ');
   }

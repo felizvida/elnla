@@ -33,6 +33,10 @@ Required before a public macOS build:
 - Confirm integrity warnings appear when a protected file changes.
 - Confirm audit export writes Markdown, JSON, and CSV sidecars under the backup
   run's `audit/` folder.
+- If testing closed-app scheduling, install the experimental LaunchAgent with
+  `scripts/install_macos_launch_agent.sh --hour 2 --minute 0`, confirm
+  `tool/backup_once.dart` writes logs under ignored local credentials, then
+  remove it with `scripts/uninstall_macos_launch_agent.sh`.
 - Sign and notarize the app before distributing outside local development.
 - The tag workflow builds and uploads an unsigned prerelease zip. Signed and
   notarized distribution still requires Apple Developer credentials.

@@ -235,7 +235,8 @@ run logs in local run manifests. The backup pane now surfaces the latest run
 summary, compact per-notebook outcome rows, and a detail dialog with suggested
 next actions and run logs. It also shows persistent notebook status cards that
 combine latest outcome, prior local copies, and original-attachment verification
-state.
+state. Run manifests now include queue position and per-notebook timing so a
+future retry/cancellation UI can be added without changing the manifest shape.
 
 Implementation tasks:
 
@@ -262,7 +263,9 @@ Status: implemented for the first production slice. Attachment cards expose
 original-payload indexing, LabArchives-viewable status, reported byte size,
 relative original payload path, and a restore action. The reader shows page
 breadcrumbs, part/comment/attachment counts, and a compact page outline. The
-viewer also exposes an integrity detail dialog.
+viewer also exposes an integrity detail dialog. The parser now records
+attachment uploaded/original version metadata and preserved thumbnail paths when
+those are present in the backup.
 
 Implementation tasks:
 
@@ -285,7 +288,9 @@ Target outcome: search becomes the fastest way to retrieve evidence.
 
 Status: implemented for the first production slice. Local fuzzy search and
 OpenAI answer mode are available, with filters for all content, page text,
-attachments, comments, exact phrase, and verified backups only.
+attachments, comments, exact phrase, and verified backups only. Search result
+selection lands on the matching backed-up page and highlights likely matching
+entry parts.
 
 Implementation tasks:
 
@@ -339,7 +344,9 @@ Status: partially implemented. The app has first-launch credential setup,
 macOS Keychain-backed secret storage with local fallback, owner-rights
 explanation, backup folder selection, schedule setup, and a release smoke-test
 script. Signing, notarization, installer work, and non-macOS secure stores
-remain external release tasks.
+remain external release tasks. JSON LabArchives archives remain the primary
+path, with SQLite archive parsing now available through the local `sqlite3`
+command when JSON tables are absent.
 
 Exit criteria:
 
@@ -372,9 +379,14 @@ Recommended next implementation order:
 
 - Enrich notebook status cards with per-card integrity recheck state once that
   can be computed cheaply.
-- Add result-to-page highlighting and richer result grouping.
-- Add external hash export or institutional timestamp/notarization workflow.
-- Replace local credential files with platform-native secure storage.
+- Harden the experimental LaunchAgent path with signed helper packaging, better
+  missed-run handling, and user-facing failure notifications.
+- Add richer search result grouping and search-index version migration.
+- Add external timestamp or institutional notarization workflow for exported
+  hashes.
+- Continue platform-native secure storage beyond macOS Keychain.
+- Decide whether the experimental LaunchAgent should become a packaged helper or
+  remain a developer/support tool.
 
 This sprint gives the largest UX improvement while preserving the read-only
 backup core.

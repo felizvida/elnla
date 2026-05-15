@@ -149,6 +149,10 @@ class BackupNotebookOutcome {
     required this.message,
     this.nextAction,
     this.backupRecordId,
+    this.queueIndex,
+    this.totalQueueCount,
+    this.startedAt,
+    this.completedAt,
     this.pageCount,
     this.archiveBytes,
     this.verifiedOriginalAttachmentCount,
@@ -161,12 +165,25 @@ class BackupNotebookOutcome {
   final String message;
   final String? nextAction;
   final String? backupRecordId;
+  final int? queueIndex;
+  final int? totalQueueCount;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
   final int? pageCount;
   final int? archiveBytes;
   final int? verifiedOriginalAttachmentCount;
   final int? expectedOriginalAttachmentCount;
 
   bool get isSuccess => status == BackupOutcomeStatus.success;
+
+  Duration? get duration {
+    final start = startedAt;
+    final end = completedAt;
+    if (start == null || end == null) {
+      return null;
+    }
+    return end.difference(start);
+  }
 
   String get summary {
     if (isSuccess) {
@@ -188,6 +205,11 @@ class BackupNotebookOutcome {
     'message': message,
     'nextAction': nextAction,
     'backupRecordId': backupRecordId,
+    'queueIndex': queueIndex,
+    'totalQueueCount': totalQueueCount,
+    'startedAt': startedAt?.toIso8601String(),
+    'completedAt': completedAt?.toIso8601String(),
+    'durationMs': duration?.inMilliseconds,
     'pageCount': pageCount,
     'archiveBytes': archiveBytes,
     'verifiedOriginalAttachmentCount': verifiedOriginalAttachmentCount,
@@ -208,6 +230,10 @@ class BackupNotebookOutcome {
       message: json['message'] as String? ?? '',
       nextAction: json['nextAction'] as String?,
       backupRecordId: json['backupRecordId'] as String?,
+      queueIndex: json['queueIndex'] as int?,
+      totalQueueCount: json['totalQueueCount'] as int?,
+      startedAt: DateTime.tryParse(json['startedAt'] as String? ?? ''),
+      completedAt: DateTime.tryParse(json['completedAt'] as String? ?? ''),
       pageCount: json['pageCount'] as int?,
       archiveBytes: json['archiveBytes'] as int?,
       verifiedOriginalAttachmentCount:
@@ -300,6 +326,8 @@ class BackupRunManifest {
                     backupRecordId: record.id,
                     pageCount: record.pageCount,
                     archiveBytes: record.contentVerification?.archiveBytes,
+                    startedAt: record.createdAt,
+                    completedAt: record.createdAt,
                     verifiedOriginalAttachmentCount: record
                         .contentVerification
                         ?.verifiedOriginalAttachmentCount,
@@ -541,12 +569,14 @@ class RenderNotebook {
     required this.createdAt,
     required this.archivePath,
     required this.nodes,
+    this.sourceLayout = 'json',
   });
 
   final String name;
   final DateTime createdAt;
   final String archivePath;
   final List<RenderNode> nodes;
+  final String sourceLayout;
 
   List<RenderNode> get rootNodes {
     final roots = nodes.where((node) => node.parentId == 0).toList()
@@ -572,6 +602,7 @@ class RenderNotebook {
     'name': name,
     'createdAt': createdAt.toIso8601String(),
     'archivePath': archivePath,
+    'sourceLayout': sourceLayout,
     'nodes': nodes.map((node) => node.toJson()).toList(),
   };
 
@@ -581,6 +612,7 @@ class RenderNotebook {
       name: json['name'] as String? ?? 'Untitled notebook',
       createdAt: DateTime.parse(json['createdAt'] as String),
       archivePath: json['archivePath'] as String? ?? '',
+      sourceLayout: json['sourceLayout'] as String? ?? 'json',
       nodes: rawNodes
           .cast<Map<String, Object?>>()
           .map(RenderNode.fromJson)
@@ -645,6 +677,9 @@ class RenderPart {
     this.attachmentContentType,
     this.attachmentSize,
     this.attachmentOriginalPath,
+    this.attachmentThumbnailPath,
+    this.attachmentVersion,
+    this.attachmentOriginalVersion,
   });
 
   final int id;
@@ -657,6 +692,9 @@ class RenderPart {
   final String? attachmentContentType;
   final int? attachmentSize;
   final String? attachmentOriginalPath;
+  final String? attachmentThumbnailPath;
+  final int? attachmentVersion;
+  final int? attachmentOriginalVersion;
 
   bool get isAttachment => attachmentName != null && attachmentName!.isNotEmpty;
 
@@ -667,6 +705,11 @@ class RenderPart {
     }
     if (attachmentSize != null) {
       pieces.add('${attachmentSize!} bytes');
+    }
+    if (attachmentOriginalVersion != null) {
+      pieces.add('original v$attachmentOriginalVersion');
+    } else if (attachmentVersion != null) {
+      pieces.add('entry v$attachmentVersion');
     }
     return pieces.isEmpty
         ? 'Attachment preserved in backup archive'
@@ -684,6 +727,9 @@ class RenderPart {
     'attachmentContentType': attachmentContentType,
     'attachmentSize': attachmentSize,
     'attachmentOriginalPath': attachmentOriginalPath,
+    'attachmentThumbnailPath': attachmentThumbnailPath,
+    'attachmentVersion': attachmentVersion,
+    'attachmentOriginalVersion': attachmentOriginalVersion,
   };
 
   static RenderPart fromJson(Map<String, Object?> json) {
@@ -701,6 +747,9 @@ class RenderPart {
       attachmentContentType: json['attachmentContentType'] as String?,
       attachmentSize: json['attachmentSize'] as int?,
       attachmentOriginalPath: json['attachmentOriginalPath'] as String?,
+      attachmentThumbnailPath: json['attachmentThumbnailPath'] as String?,
+      attachmentVersion: json['attachmentVersion'] as int?,
+      attachmentOriginalVersion: json['attachmentOriginalVersion'] as int?,
     );
   }
 }

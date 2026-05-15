@@ -77,6 +77,10 @@ work.
 - The implementation relies on local command-line extractors and tries `bsdtar`,
   `tar`, then `7z`. If none of those can read the LabArchives `.7z` archive on
   the current platform, backup parsing will fail after download.
+- JSON backup tables are the primary parser path. If JSON tables are absent but
+  `notebook/db.sqlite3` is present, BenchVault can parse a SQLite layout through
+  the local `sqlite3` command. If `sqlite3` is unavailable or the schema differs
+  materially, SQLite parsing will fail with a compatibility message.
 - Extraction errors are reported as backup failures. BenchVault does not repair
   corrupt archives.
 - The original `.7z` archive is retained for successful backups, so unsupported
@@ -108,7 +112,8 @@ work.
 ## Attachments
 
 - BenchVault preserves and restores original payloads when the full-size backup
-  archive includes them, but it previews only safe local formats inline.
+  archive includes them, and records attachment version and thumbnail paths when
+  the backup exposes them. It previews only safe local formats inline.
 - Office documents, PDFs, TIFF images, SnapGene/Geneious files, binary chemical
   drawings, media, archives, and custom instrument exports are recognized but
   generally opened outside BenchVault after local restore.
@@ -189,8 +194,10 @@ work.
 ## Scheduling
 
 - Automatic backups run only while the BenchVault app is open. There is no
-  macOS LaunchAgent, Windows Task Scheduler integration, iPad background task,
-  or server-side scheduler.
+  production macOS LaunchAgent, Windows Task Scheduler integration, iPad
+  background task, or server-side scheduler. The repository includes an
+  experimental macOS LaunchAgent installer that runs the local backup tool, but
+  it is not a signed packaged helper.
 - Missed scheduled runs are not currently replayed as a separate catch-up
   queue. The next run is scheduled when the app is active and setup is ready.
 - Scheduled backup frequency is currently daily or weekly. There is no monthly,
