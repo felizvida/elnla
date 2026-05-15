@@ -51,6 +51,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   BackupRecord? _selectedBackup;
   RenderNotebook? _selectedNotebook;
   RenderNode? _selectedNode;
+  BackupIntegrityCheck? _integrityCheck;
   LocalSetupStatus? _setupStatus;
   BackupSchedule _schedule = BackupSchedule.disabled();
   String _backupRootPath = '';
@@ -65,6 +66,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   bool _setupBusy = false;
   bool _restoreBusy = false;
   bool _searchBusy = false;
+  bool _integrityBusy = false;
 
   @override
   void initState() {
@@ -174,6 +176,15 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = notebook.firstPage;
+      _integrityCheck = BackupIntegrityCheck(
+        backupId: 'demo_20260514_090000Z',
+        checkedAt: DateTime.utc(2026, 5, 14, 9),
+        hasManifest: false,
+        hasLocalSeal: false,
+        manifestPath: null,
+        checkedFileCount: 0,
+        checkedBytes: 0,
+      );
       _openAiSearchReady = false;
       _log
         ..clear()
@@ -189,12 +200,99 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   }
 
   Future<void> _selectBackup(BackupRecord backup) async {
-    final notebook = await _service.loadRenderNotebook(backup);
+    setState(() {
+      _integrityBusy = true;
+      _integrityCheck = null;
+    });
+    final integrityCheck = await _service.verifyBackupIntegrity(backup);
+    RenderNotebook? notebook;
+    Object? loadError;
+    try {
+      notebook = await _service.loadRenderNotebook(backup);
+    } catch (error) {
+      loadError = error;
+    }
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
-      _selectedNode = notebook.firstPage;
+      _selectedNode = notebook?.firstPage;
+      _integrityCheck = integrityCheck;
+      _integrityBusy = false;
+      if (loadError != null) {
+        _status = 'Viewer could not load backup: $loadError';
+      }
     });
+    if (integrityCheck.needsWarning) {
+      unawaited(_showIntegrityWarning(integrityCheck));
+    }
+  }
+
+  Future<void> _showIntegrityWarning(BackupIntegrityCheck check) async {
+    if (!mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          check.hasManifest ? Icons.warning_amber_outlined : Icons.gpp_bad,
+          color: Theme.of(context).colorScheme.error,
+        ),
+        title: Text(check.statusTitle),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(check.summary),
+                if (check.manifestPath != null) ...[
+                  const SizedBox(height: 10),
+                  SelectableText('Manifest: ${check.manifestPath}'),
+                ],
+                if (check.changedFiles.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Changed files:',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  for (final path in check.changedFiles.take(8))
+                    SelectableText(path),
+                ],
+                if (check.missingFiles.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Missing files:',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  for (final path in check.missingFiles.take(8))
+                    SelectableText(path),
+                ],
+                if (check.extraFiles.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Unexpected files:',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  for (final path in check.extraFiles.take(8))
+                    SelectableText(path),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Review Backup'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _selectSearchHit(NotebookSearchHit hit) async {
@@ -208,6 +306,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
     if (backup == null) {
       return;
     }
+    final integrityCheck = await _service.verifyBackupIntegrity(backup);
     final notebook = await _service.loadRenderNotebook(backup);
     RenderNode? node;
     for (final candidate in notebook.nodes) {
@@ -223,7 +322,11 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       _selectedBackup = backup;
       _selectedNotebook = notebook;
       _selectedNode = node ?? notebook.firstPage;
+      _integrityCheck = integrityCheck;
     });
+    if (integrityCheck.needsWarning) {
+      unawaited(_showIntegrityWarning(integrityCheck));
+    }
   }
 
   Future<void> _runSearch() async {
@@ -607,8 +710,15 @@ class _ElnlaHomeState extends State<ElnlaHome> {
               _StatusStrip(
                 status: _status,
                 detail: _scheduleDetail,
-                busy: _busy || _setupBusy || _restoreBusy || _searchBusy,
+                busy:
+                    _busy ||
+                    _setupBusy ||
+                    _restoreBusy ||
+                    _searchBusy ||
+                    _integrityBusy,
               ),
+              if (_setupStatus?.isReady ?? false)
+                _IntegrityBanner(check: _integrityCheck, busy: _integrityBusy),
               if (_setupStatus?.isReady ?? false)
                 _SearchPanel(
                   controller: _searchController,
@@ -813,6 +923,82 @@ class _StatusStrip extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntegrityBanner extends StatelessWidget {
+  const _IntegrityBanner({required this.check, required this.busy});
+
+  final BackupIntegrityCheck? check;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    if (busy) {
+      return _banner(
+        context,
+        icon: Icons.fact_check_outlined,
+        title: 'Checking backup integrity...',
+        detail: 'Verifying SHA-256 hashes before rendering this backup.',
+        color: Theme.of(context).colorScheme.primary,
+      );
+    }
+    final result = check;
+    if (result == null) {
+      return const SizedBox.shrink();
+    }
+    final colors = Theme.of(context).colorScheme;
+    final color = result.isVerified ? const Color(0xff1b6e42) : colors.error;
+    return _banner(
+      context,
+      icon: result.isVerified
+          ? Icons.verified_outlined
+          : Icons.warning_amber_outlined,
+      title: result.statusTitle,
+      detail: result.summary,
+      color: color,
+      strong: result.needsWarning,
+    );
+  }
+
+  Widget _banner(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String detail,
+    required Color color,
+    bool strong = false,
+  }) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: strong ? 12 : 7),
+      color: color.withValues(alpha: strong ? 0.16 : 0.08),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: strong ? 24 : 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: (strong ? textTheme.titleSmall : textTheme.labelLarge)
+                      ?.copyWith(color: color),
+                ),
+                Text(
+                  detail,
+                  maxLines: strong ? 3 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall,
+                ),
               ],
             ),
           ),

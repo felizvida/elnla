@@ -34,6 +34,8 @@ in the app and in the documentation so backup failures are easier to understand.
   natural-language answers when the user saves an OpenAI API key locally.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
+- Seals each successful backup with a SHA-256 integrity manifest and warns in
+  the viewer if any protected file changes later.
 - Stores credentials, user access XML, notebook IDs, schedules, and backups in
   local ignored paths or in the user-selected backup folder.
 - Supports manual backup plus daily or weekly scheduled backup while the app is

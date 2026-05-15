@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'backup_models.dart';
 import 'backup_parser.dart';
 import 'labarchives_client.dart';
@@ -35,6 +37,9 @@ class BackupService {
       File(_join(credentialsDir.path, 'elnla_settings.json'));
 
   File get _openAiSearchFile => File(_join(credentialsDir.path, 'openai.env'));
+
+  File get _integrityLedgerFile =>
+      File(_join(credentialsDir.path, 'integrity_ledger.jsonl'));
 
   Future<LocalSetupStatus> loadSetupStatus() async {
     var notebookCount = 0;
@@ -263,6 +268,140 @@ class BackupService {
     return RenderNotebook.fromJson(json);
   }
 
+  Future<BackupRecord> sealBackupIntegrity(BackupRecord record) async {
+    final renderFile = await _resolveBackupFile(record.renderPath);
+    final backupRoot = await _backupRootForFile(renderFile);
+    final runDir = renderFile.parent;
+    final manifestFile = File(_join(runDir.path, 'integrity_manifest.json'));
+    final manifestPath = _relativeTo(backupRoot.path, manifestFile.path);
+    final sealedRecord = record.copyWith(integrityManifestPath: manifestPath);
+    final recordFile = File(_join(runDir.path, 'backup_record.json'));
+    await recordFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(sealedRecord.toJson()),
+    );
+
+    final manifest = await _buildIntegrityManifest(
+      record: sealedRecord,
+      runDir: runDir,
+      backupRootPath: backupRoot.path,
+      manifestPath: manifestPath,
+    );
+    await manifestFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(manifest),
+    );
+    final manifestSha256 = await _sha256File(manifestFile);
+    await _appendIntegrityLedger(
+      record: sealedRecord,
+      manifestPath: manifestPath,
+      manifestSha256: manifestSha256,
+      manifestBytes: await manifestFile.length(),
+    );
+    return sealedRecord;
+  }
+
+  Future<BackupIntegrityCheck> verifyBackupIntegrity(
+    BackupRecord record,
+  ) async {
+    final manifestPath = record.integrityManifestPath;
+    if (manifestPath == null || manifestPath.trim().isEmpty) {
+      return BackupIntegrityCheck(
+        backupId: record.id,
+        checkedAt: DateTime.now().toUtc(),
+        hasManifest: false,
+        hasLocalSeal: false,
+        manifestPath: null,
+        checkedFileCount: 0,
+        checkedBytes: 0,
+      );
+    }
+
+    final manifestFile = await _resolveBackupFile(manifestPath);
+    if (!await manifestFile.exists()) {
+      return BackupIntegrityCheck(
+        backupId: record.id,
+        checkedAt: DateTime.now().toUtc(),
+        hasManifest: false,
+        hasLocalSeal: false,
+        manifestPath: manifestPath,
+        checkedFileCount: 0,
+        checkedBytes: 0,
+      );
+    }
+
+    try {
+      final manifestSha256 = await _sha256File(manifestFile);
+      final manifest =
+          jsonDecode(await manifestFile.readAsString()) as Map<String, Object?>;
+      final entries = (manifest['files'] as List<Object?>? ?? const [])
+          .cast<Map<String, Object?>>();
+      final expectedPaths = <String>{};
+      final missingFiles = <String>[];
+      final changedFiles = <String>[];
+      var checkedBytes = 0;
+      for (final entry in entries) {
+        final path = entry['path'] as String? ?? '';
+        if (path.isEmpty) {
+          continue;
+        }
+        expectedPaths.add(path);
+        final file = await _resolveBackupFile(path);
+        if (!await file.exists()) {
+          missingFiles.add(path);
+          continue;
+        }
+        final expectedSize = entry['bytes'] as int? ?? -1;
+        final actualSize = await file.length();
+        checkedBytes += actualSize;
+        final expectedSha256 = entry['sha256'] as String? ?? '';
+        final actualSha256 = await _sha256File(file);
+        if (expectedSize != actualSize || expectedSha256 != actualSha256) {
+          changedFiles.add(path);
+        }
+      }
+
+      final renderFile = await _resolveBackupFile(record.renderPath);
+      final backupRoot = await _backupRootForFile(renderFile);
+      final currentPaths = await _currentProtectedPaths(
+        runDir: renderFile.parent,
+        backupRootPath: backupRoot.path,
+      );
+      final extraFiles =
+          currentPaths.where((path) => !expectedPaths.contains(path)).toList()
+            ..sort();
+
+      final ledgerEntry = await _findIntegrityLedgerEntry(
+        backupId: record.id,
+        manifestPath: manifestPath,
+      );
+      final sealedManifestSha256 = ledgerEntry?['manifestSha256'] as String?;
+      return BackupIntegrityCheck(
+        backupId: record.id,
+        checkedAt: DateTime.now().toUtc(),
+        hasManifest: true,
+        hasLocalSeal: ledgerEntry != null,
+        manifestPath: manifestPath,
+        manifestSha256: manifestSha256,
+        sealedManifestSha256: sealedManifestSha256,
+        checkedFileCount: entries.length,
+        checkedBytes: checkedBytes,
+        missingFiles: missingFiles,
+        changedFiles: changedFiles,
+        extraFiles: extraFiles,
+      );
+    } catch (error) {
+      return BackupIntegrityCheck(
+        backupId: record.id,
+        checkedAt: DateTime.now().toUtc(),
+        hasManifest: true,
+        hasLocalSeal: false,
+        manifestPath: manifestPath,
+        checkedFileCount: 0,
+        checkedBytes: 0,
+        error: error.toString(),
+      );
+    }
+  }
+
   Future<BackupRecord> ensureReadableCopy(BackupRecord record) async {
     final existingMarkdown = record.readablePath == null
         ? null
@@ -457,10 +596,8 @@ class BackupService {
           readablePath: readable.markdownPath,
           searchIndexPath: readable.searchIndexPath,
         );
-        final recordFile = File(_join(notebookDir.path, 'backup_record.json'));
-        await recordFile.writeAsString(
-          const JsonEncoder.withIndent('  ').convert(record.toJson()),
-        );
+        onProgress?.call('Sealing integrity manifest for ${notebook.name}');
+        record = await sealBackupIntegrity(record);
         records.add(record);
         onProgress?.call('Finished ${notebook.name}');
       } catch (error) {
@@ -508,6 +645,152 @@ class BackupService {
       );
     }
     return pieces.join('; ');
+  }
+
+  Future<Map<String, Object?>> _buildIntegrityManifest({
+    required BackupRecord record,
+    required Directory runDir,
+    required String backupRootPath,
+    required String manifestPath,
+  }) async {
+    final files = <Map<String, Object?>>[];
+    final currentPaths = await _currentProtectedPaths(
+      runDir: runDir,
+      backupRootPath: backupRootPath,
+    );
+    for (final path in currentPaths) {
+      final file = await _resolveBackupFile(path);
+      final stat = await file.stat();
+      files.add({
+        'path': path,
+        'bytes': stat.size,
+        'sha256': await _sha256File(file),
+        'modifiedAt': stat.modified.toUtc().toIso8601String(),
+      });
+    }
+    final totalBytes = files.fold<int>(
+      0,
+      (sum, file) => sum + (file['bytes'] as int? ?? 0),
+    );
+    return {
+      'version': 1,
+      'kind': 'elnla.backup.integrity',
+      'algorithm': 'sha256',
+      'backupId': record.id,
+      'notebookName': record.notebookName,
+      'backupCreatedAt': record.createdAt.toIso8601String(),
+      'generatedAt': DateTime.now().toUtc().toIso8601String(),
+      'manifestPath': manifestPath,
+      'fileCount': files.length,
+      'totalBytes': totalBytes,
+      'note':
+          'Tamper-evident SHA-256 seal for this local backup. It detects later byte changes to protected files, but it is not a legal certification by itself.',
+      'files': files,
+    };
+  }
+
+  Future<List<String>> _currentProtectedPaths({
+    required Directory runDir,
+    required String backupRootPath,
+  }) async {
+    final paths = <String>[];
+    if (!await runDir.exists()) {
+      return paths;
+    }
+    await for (final entity in runDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is! File) {
+        continue;
+      }
+      final name = entity.uri.pathSegments.isEmpty
+          ? ''
+          : entity.uri.pathSegments.last;
+      if (name == 'integrity_manifest.json') {
+        continue;
+      }
+      paths.add(_relativeTo(backupRootPath, entity.path));
+    }
+    paths.sort();
+    return paths;
+  }
+
+  Future<String> _sha256File(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
+  Future<void> _appendIntegrityLedger({
+    required BackupRecord record,
+    required String manifestPath,
+    required String manifestSha256,
+    required int manifestBytes,
+  }) async {
+    await credentialsDir.create(recursive: true);
+    String? previousEntryHash;
+    if (await _integrityLedgerFile.exists()) {
+      final lines = await _integrityLedgerFile.readAsLines();
+      for (final line in lines.reversed) {
+        if (line.trim().isEmpty) {
+          continue;
+        }
+        final entry = jsonDecode(line) as Map<String, Object?>;
+        previousEntryHash = entry['entryHash'] as String?;
+        break;
+      }
+    }
+    final entry = <String, Object?>{
+      'version': 1,
+      'kind': 'elnla.integrity.ledger',
+      'backupId': record.id,
+      'notebookName': record.notebookName,
+      'backupCreatedAt': record.createdAt.toIso8601String(),
+      'sealedAt': DateTime.now().toUtc().toIso8601String(),
+      'manifestPath': manifestPath,
+      'manifestSha256': manifestSha256,
+      'manifestBytes': manifestBytes,
+      'previousEntryHash': previousEntryHash,
+    };
+    entry['entryHash'] = _ledgerEntryHash(entry);
+    await _integrityLedgerFile.writeAsString(
+      '${jsonEncode(entry)}\n',
+      mode: FileMode.append,
+    );
+    await _setOwnerOnlyPermissions(_integrityLedgerFile);
+  }
+
+  Future<Map<String, Object?>?> _findIntegrityLedgerEntry({
+    required String backupId,
+    required String manifestPath,
+  }) async {
+    if (!await _integrityLedgerFile.exists()) {
+      return null;
+    }
+    Map<String, Object?>? found;
+    for (final line in await _integrityLedgerFile.readAsLines()) {
+      if (line.trim().isEmpty) {
+        continue;
+      }
+      final entry = jsonDecode(line) as Map<String, Object?>;
+      if (entry['backupId'] == backupId &&
+          entry['manifestPath'] == manifestPath) {
+        found = entry;
+      }
+    }
+    if (found == null) {
+      return null;
+    }
+    final expectedHash = found['entryHash'];
+    if (expectedHash is String && expectedHash == _ledgerEntryHash(found)) {
+      return found;
+    }
+    return null;
+  }
+
+  String _ledgerEntryHash(Map<String, Object?> entry) {
+    final canonical = Map<String, Object?>.from(entry)..remove('entryHash');
+    return sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
   }
 
   Future<LabArchivesClient> _client() async {

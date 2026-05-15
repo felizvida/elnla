@@ -212,4 +212,50 @@ void main() {
     expect(result.usedOpenAi, isFalse);
     expect(result.hits.single.chunk.pageTitle, 'Zebrafish hypoxia assay');
   });
+
+  test('integrity seal detects byte-level backup changes', () async {
+    final root = await Directory.systemTemp.createTemp('elnla_integrity_test_');
+    addTearDown(() => root.delete(recursive: true));
+
+    final service = BackupService(root: root);
+    final runDir = Directory(
+      '${root.path}/backups/notebooks/demo/2026/05/14/run_003',
+    );
+    await runDir.create(recursive: true);
+    await File('${runDir.path}/notebook.7z').writeAsBytes([1, 2, 3]);
+    await File('${runDir.path}/render_notebook.json').writeAsString(
+      jsonEncode({
+        'name': 'Integrity Demo',
+        'createdAt': DateTime.utc(2026, 5, 14).toIso8601String(),
+        'archivePath': 'notebooks/demo/2026/05/14/run_003/notebook.7z',
+        'nodes': <Object?>[],
+      }),
+    );
+    await Directory('${runDir.path}/readable').create();
+    await File(
+      '${runDir.path}/readable/notebook.md',
+    ).writeAsString('# Integrity Demo\n');
+
+    final record = BackupRecord(
+      id: 'run_003_demo',
+      notebookName: 'Integrity Demo',
+      createdAt: DateTime.utc(2026, 5, 14),
+      archivePath: 'notebooks/demo/2026/05/14/run_003/notebook.7z',
+      renderPath: 'notebooks/demo/2026/05/14/run_003/render_notebook.json',
+      readablePath: 'notebooks/demo/2026/05/14/run_003/readable/notebook.md',
+      pageCount: 0,
+    );
+
+    final sealed = await service.sealBackupIntegrity(record);
+    final verified = await service.verifyBackupIntegrity(sealed);
+    expect(sealed.integrityManifestPath, isNotNull);
+    expect(verified.isVerified, isTrue);
+    expect(verified.checkedFileCount, greaterThanOrEqualTo(3));
+
+    await File('${runDir.path}/notebook.7z').writeAsBytes([1, 2, 4]);
+    final tampered = await service.verifyBackupIntegrity(sealed);
+    expect(tampered.isVerified, isFalse);
+    expect(tampered.changedFiles, contains(sealed.archivePath));
+    expect(tampered.statusTitle, 'Backup contents changed');
+  });
 }

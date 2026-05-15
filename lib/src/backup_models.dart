@@ -22,6 +22,7 @@ class BackupRecord {
     required this.pageCount,
     this.readablePath,
     this.searchIndexPath,
+    this.integrityManifestPath,
     this.contentVerification,
   });
 
@@ -33,6 +34,7 @@ class BackupRecord {
   final int pageCount;
   final String? readablePath;
   final String? searchIndexPath;
+  final String? integrityManifestPath;
   final BackupContentVerification? contentVerification;
 
   String get createdAtLabel {
@@ -50,6 +52,7 @@ class BackupRecord {
     'pageCount': pageCount,
     'readablePath': readablePath,
     'searchIndexPath': searchIndexPath,
+    'integrityManifestPath': integrityManifestPath,
     'contentVerification': contentVerification?.toJson(),
   };
 
@@ -63,6 +66,7 @@ class BackupRecord {
       pageCount: json['pageCount'] as int,
       readablePath: json['readablePath'] as String?,
       searchIndexPath: json['searchIndexPath'] as String?,
+      integrityManifestPath: json['integrityManifestPath'] as String?,
       contentVerification: json['contentVerification'] is Map<String, Object?>
           ? BackupContentVerification.fromJson(
               json['contentVerification'] as Map<String, Object?>,
@@ -80,6 +84,7 @@ class BackupRecord {
     int? pageCount,
     String? readablePath,
     String? searchIndexPath,
+    String? integrityManifestPath,
     BackupContentVerification? contentVerification,
   }) {
     return BackupRecord(
@@ -91,8 +96,114 @@ class BackupRecord {
       pageCount: pageCount ?? this.pageCount,
       readablePath: readablePath ?? this.readablePath,
       searchIndexPath: searchIndexPath ?? this.searchIndexPath,
+      integrityManifestPath:
+          integrityManifestPath ?? this.integrityManifestPath,
       contentVerification: contentVerification ?? this.contentVerification,
     );
+  }
+}
+
+class BackupIntegrityCheck {
+  const BackupIntegrityCheck({
+    required this.backupId,
+    required this.checkedAt,
+    required this.hasManifest,
+    required this.hasLocalSeal,
+    required this.manifestPath,
+    required this.checkedFileCount,
+    required this.checkedBytes,
+    this.manifestSha256,
+    this.sealedManifestSha256,
+    this.missingFiles = const [],
+    this.changedFiles = const [],
+    this.extraFiles = const [],
+    this.error,
+  });
+
+  final String backupId;
+  final DateTime checkedAt;
+  final bool hasManifest;
+  final bool hasLocalSeal;
+  final String? manifestPath;
+  final String? manifestSha256;
+  final String? sealedManifestSha256;
+  final int checkedFileCount;
+  final int checkedBytes;
+  final List<String> missingFiles;
+  final List<String> changedFiles;
+  final List<String> extraFiles;
+  final String? error;
+
+  bool get manifestMatchesSeal =>
+      !hasLocalSeal ||
+      (manifestSha256 != null && manifestSha256 == sealedManifestSha256);
+
+  bool get filesMatch =>
+      missingFiles.isEmpty && changedFiles.isEmpty && extraFiles.isEmpty;
+
+  bool get isVerified =>
+      hasManifest &&
+      hasLocalSeal &&
+      manifestMatchesSeal &&
+      filesMatch &&
+      error == null;
+
+  bool get needsWarning => !isVerified;
+
+  String get statusTitle {
+    if (isVerified) {
+      return 'Integrity verified';
+    }
+    if (!hasManifest) {
+      return 'Backup is not integrity sealed';
+    }
+    if (!manifestMatchesSeal) {
+      return 'Integrity seal does not match';
+    }
+    if (!filesMatch) {
+      return 'Backup contents changed';
+    }
+    if (!hasLocalSeal) {
+      return 'Local integrity seal missing';
+    }
+    return 'Integrity check warning';
+  }
+
+  String get summary {
+    if (isVerified) {
+      return '$checkedFileCount files match the backup-time SHA-256 seal.';
+    }
+    if (!hasManifest) {
+      return 'This backup was created before integrity sealing or its manifest is missing.';
+    }
+    final pieces = <String>[];
+    if (!manifestMatchesSeal) {
+      pieces.add('manifest hash changed');
+    }
+    if (missingFiles.isNotEmpty) {
+      pieces.add(
+        '${missingFiles.length} missing file${missingFiles.length == 1 ? '' : 's'}',
+      );
+    }
+    if (changedFiles.isNotEmpty) {
+      pieces.add(
+        '${changedFiles.length} changed file${changedFiles.length == 1 ? '' : 's'}',
+      );
+    }
+    if (extraFiles.isNotEmpty) {
+      pieces.add(
+        '${extraFiles.length} unexpected file${extraFiles.length == 1 ? '' : 's'}',
+      );
+    }
+    if (error != null) {
+      pieces.add(error!);
+    }
+    if (!hasLocalSeal) {
+      pieces.add(
+        'local seal ledger entry is missing; manifest creation time cannot be corroborated locally',
+      );
+    }
+    return pieces.isEmpty ? 'Integrity check needs review.' : pieces.join('; ');
   }
 }
 

@@ -22,6 +22,7 @@ instrument output, and other bench-research attachments.
 - Backs up every notebook that your LabArchives account is allowed to back up.
 - Keeps the original LabArchives archive file for preservation.
 - Verifies full-size original attachment files after backup by byte size.
+- Seals each backup with SHA-256 checksums and warns if files change later.
 - Creates a readable Markdown copy and search index for each backup.
 - Lets you search backed-up notebooks with local keyword matching, or with
   natural-language answers when you add an OpenAI API key.
@@ -84,9 +85,16 @@ payloads. A successful backup means:
 - Each reported attachment has an `original` file in the extracted backup.
 - Each original file has the same byte size reported by LabArchives.
 - A checksum manifest was written for later auditing.
+- An integrity seal was written so the viewer can detect later byte changes.
 
 The manifest is named `original_files_manifest.json`. It includes relative file
 paths, expected byte counts, actual byte counts, and SHA-256 checksums.
+
+ELNLA also writes `integrity_manifest.json` for the whole backup run and records
+a local seal in the ignored credentials folder. When you open a backup later,
+the viewer re-checks protected files. If a file was changed, removed, or added,
+ELNLA shows a warning before you rely on that copy. This is tamper-evidence for
+local preservation; it is not a legal certification by itself.
 
 ## Search Backed-Up Notebooks
 
@@ -138,6 +146,7 @@ notebooks/
               notebook.md
               search_chunks.jsonl
             original_files_manifest.json
+            integrity_manifest.json
             backup_record.json
 runs/
   year/
@@ -164,6 +173,8 @@ Use the viewer to:
 - Click the download button on an attachment card to restore a copy of the
   backed-up original file into a folder you choose.
 - Open the backup folder when you need to inspect the preservation archive.
+- Watch the integrity banner at the top of the viewer before relying on a
+  backup copy.
 
 ## Good Lab Practice
 
