@@ -10,6 +10,15 @@ import 'src/notebook_search_service.dart';
 import 'src/search_models.dart';
 import 'src/setup_models.dart';
 
+const _nihBlue = Color(0xff005ea2);
+const _nihBlueDark = Color(0xff162e51);
+const _nihBlueLightest = Color(0xffe5faff);
+const _nihGold = Color(0xffface00);
+const _nihGoldLight = Color(0xfffff5c2);
+const _nihCoolAccent = Color(0xff1dc2ae);
+const _nihSurface = Color(0xfffbfcfd);
+const _nihSuccess = Color(0xff0f6460);
+
 void main() {
   runApp(const ElnlaApp());
 }
@@ -19,10 +28,22 @@ class ElnlaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xff1f7a6d),
-      brightness: Brightness.light,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: _nihBlue,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: _nihBlue,
+          onPrimary: Colors.white,
+          primaryContainer: _nihBlueLightest,
+          onPrimaryContainer: _nihBlueDark,
+          secondary: _nihGold,
+          onSecondary: const Color(0xff1c1d1f),
+          secondaryContainer: _nihGoldLight,
+          onSecondaryContainer: _nihBlueDark,
+          tertiary: _nihCoolAccent,
+          surface: _nihSurface,
+        );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'ELNLA',
@@ -30,6 +51,24 @@ class ElnlaApp extends StatelessWidget {
         colorScheme: scheme,
         useMaterial3: true,
         visualDensity: VisualDensity.compact,
+        scaffoldBackgroundColor: _nihSurface,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _nihBlueDark,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: _nihBlue,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: scheme.primary, width: 2),
+          ),
+        ),
       ),
       home: const ElnlaHome(),
     );
@@ -954,7 +993,7 @@ class _IntegrityBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final colors = Theme.of(context).colorScheme;
-    final color = result.isVerified ? const Color(0xff1b6e42) : colors.error;
+    final color = result.isVerified ? _nihSuccess : colors.error;
     return _banner(
       context,
       icon: result.isVerified

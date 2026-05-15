@@ -49,6 +49,9 @@ in the app and in the documentation so backup failures are easier to understand.
   required Xcode iOS platform components installed.
 - Shared LabArchives, backup, parsing, and verification logic stays in Dart so
   platform-specific code remains small.
+- Visual styling uses an NIH/HHS-aligned palette: federal blue as the primary
+  action color, gold as a restrained secondary accent, and cool grays for
+  dense notebook review surfaces.
 
 Current status:
 
