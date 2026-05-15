@@ -100,6 +100,11 @@ show whether an older protected copy exists. Open `Details` in the latest-run
 banner to review every notebook outcome, suggested next action, and run-log
 line.
 
+If a run has skipped notebooks that are likely fixable, such as network,
+storage, extraction, verification, or authorization problems, the latest-run
+banner shows a retry action. Owner-rights skips are not retried because only the
+notebook owner can download the full-size backup.
+
 BenchVault may skip notebooks that are visible to you but not eligible for API backup
 with your current permissions. This does not mean the backup system failed. It
 means LabArchives did not grant backup rights for that notebook. At NIH/NICHD,
@@ -120,10 +125,16 @@ The manifest is named `original_files_manifest.json`. It includes relative file
 paths, expected byte counts, actual byte counts, and SHA-256 checksums.
 
 BenchVault also writes `integrity_manifest.json` for the whole backup run and records
-a local seal in the ignored credentials folder. When you open a backup later,
-the viewer re-checks protected files. If a file was changed, removed, or added,
-BenchVault shows a warning before you rely on that copy. This is tamper-evidence for
-local preservation; it is not a legal certification by itself.
+a local seal in the ignored credentials folder. The local seal ledger is chained,
+so removing or rewriting an earlier seal makes later seals fail local
+corroboration. When you open a backup later, the viewer re-checks protected
+files. If a file was changed, removed, or added, BenchVault shows a warning
+before you rely on that copy. This is tamper-evidence for local preservation; it
+is not a legal certification by itself.
+
+The viewer treats backup metadata paths as untrusted. It rejects absolute paths,
+drive-letter paths, UNC-style paths, `..` traversal, and files that resolve
+outside the backup folder before previewing or restoring an attachment.
 
 > Tamper-evidence depends on protecting the backup folder after it is written.
 > BenchVault can warn when sealed files change, but it does not replace formal
@@ -137,7 +148,8 @@ folder:
 
 - `backup_audit_summary.md`: human-readable backup and integrity summary.
 - `backup_audit_summary.json`: machine-readable backup, integrity, and export
-  metadata.
+  metadata, including compact archive diagnostics such as source layout,
+  page/part counts, attachment counts, thumbnail counts, and part-type counts.
 - `integrity_files.csv`: protected file paths, byte counts, SHA-256 hashes, and
   backup-time modification timestamps.
 - `external_hash_anchor.txt`: a compact manifest-hash record that can be placed

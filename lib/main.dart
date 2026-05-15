@@ -692,6 +692,7 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
       await _refreshPreflight();
     } catch (error) {
       if (mounted) {
+        await _refreshBackupRunStateAfterFailure();
         setState(() {
           _status = 'Backup failed: $error';
         });
@@ -704,6 +705,69 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
           _rescheduleAutomaticBackup();
         });
       }
+    }
+  }
+
+  Future<void> _retryLatestRunFailures() async {
+    final run = _latestRun;
+    if (run == null || !run.hasRetryableFailures || _busy || _setupBusy) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _log.clear();
+      _status =
+          'Retrying ${run.retryableFailureCount} eligible skipped notebook${run.retryableFailureCount == 1 ? '' : 's'}...';
+    });
+    try {
+      final records = await _service.retryFailedNotebooksFromRun(
+        run,
+        onProgress: (message) {
+          if (mounted) {
+            setState(() => _log.insert(0, message));
+          }
+        },
+      );
+      final backups = await _service.loadBackups();
+      final latestRun = await _service.loadLatestBackupRun();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _backups = backups;
+        _latestRun = latestRun;
+        _status =
+            'Retry complete: ${records.length} notebook archive${records.length == 1 ? '' : 's'} created.';
+      });
+      if (records.isNotEmpty) {
+        await _selectBackup(records.first);
+      }
+      await _refreshPreflight();
+    } catch (error) {
+      if (mounted) {
+        await _refreshBackupRunStateAfterFailure();
+        setState(() => _status = 'Retry failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _refreshBackupRunStateAfterFailure() async {
+    try {
+      final backups = await _service.loadBackups();
+      final latestRun = await _service.loadLatestBackupRun();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _backups = backups;
+        _latestRun = latestRun;
+      });
+    } catch (_) {
+      // Keep the original failure visible if local manifest refresh also fails.
     }
   }
 
@@ -1048,6 +1112,9 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                         onSelectNode: (node) =>
                             setState(() => _selectedNode = node),
                         onDownloadAttachment: _downloadAttachment,
+                        onRetryRunFailures: _busy || _setupBusy
+                            ? null
+                            : _retryLatestRunFailures,
                       );
                     }
                     return _WideLayout(
@@ -1064,6 +1131,9 @@ class _BenchVaultHomeState extends State<BenchVaultHome> {
                       onSelectNode: (node) =>
                           setState(() => _selectedNode = node),
                       onDownloadAttachment: _downloadAttachment,
+                      onRetryRunFailures: _busy || _setupBusy
+                          ? null
+                          : _retryLatestRunFailures,
                     );
                   },
                 ),
@@ -2564,6 +2634,7 @@ class _WideLayout extends StatelessWidget {
     required this.onSelectBackup,
     required this.onSelectNode,
     required this.onDownloadAttachment,
+    required this.onRetryRunFailures,
   });
 
   final BackupService service;
@@ -2578,6 +2649,7 @@ class _WideLayout extends StatelessWidget {
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
   final ValueChanged<RenderPart> onDownloadAttachment;
+  final VoidCallback? onRetryRunFailures;
 
   @override
   Widget build(BuildContext context) {
@@ -2591,6 +2663,7 @@ class _WideLayout extends StatelessWidget {
             latestRun: latestRun,
             selected: selectedBackup,
             onSelect: onSelectBackup,
+            onRetryRunFailures: onRetryRunFailures,
             log: log,
           ),
         ),
@@ -2633,6 +2706,7 @@ class _NarrowLayout extends StatelessWidget {
     required this.onSelectBackup,
     required this.onSelectNode,
     required this.onDownloadAttachment,
+    required this.onRetryRunFailures,
   });
 
   final BackupService service;
@@ -2647,6 +2721,7 @@ class _NarrowLayout extends StatelessWidget {
   final ValueChanged<BackupRecord> onSelectBackup;
   final ValueChanged<RenderNode> onSelectNode;
   final ValueChanged<RenderPart> onDownloadAttachment;
+  final VoidCallback? onRetryRunFailures;
 
   @override
   Widget build(BuildContext context) {
@@ -2670,6 +2745,7 @@ class _NarrowLayout extends StatelessWidget {
                   latestRun: latestRun,
                   selected: selectedBackup,
                   onSelect: onSelectBackup,
+                  onRetryRunFailures: onRetryRunFailures,
                   log: log,
                 ),
                 _NotebookTree(
@@ -2701,6 +2777,7 @@ class _BackupList extends StatelessWidget {
     required this.latestRun,
     required this.selected,
     required this.onSelect,
+    required this.onRetryRunFailures,
     required this.log,
   });
 
@@ -2709,6 +2786,7 @@ class _BackupList extends StatelessWidget {
   final BackupRunManifest? latestRun;
   final BackupRecord? selected;
   final ValueChanged<BackupRecord> onSelect;
+  final VoidCallback? onRetryRunFailures;
   final List<String> log;
 
   @override
@@ -2722,7 +2800,11 @@ class _BackupList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _PaneHeader(icon: Icons.inventory_2_outlined, title: 'Backups'),
-        if (latestRun != null) _BackupRunSummary(run: latestRun!),
+        if (latestRun != null)
+          _BackupRunSummary(
+            run: latestRun!,
+            onRetryFailures: onRetryRunFailures,
+          ),
         Expanded(
           child: backups.isEmpty && notebookStatuses.isEmpty
               ? const _EmptyState(
@@ -3069,14 +3151,16 @@ IconData _notebookStatusIcon(_NotebookBackupStatus status) {
 }
 
 class _BackupRunSummary extends StatelessWidget {
-  const _BackupRunSummary({required this.run});
+  const _BackupRunSummary({required this.run, required this.onRetryFailures});
 
   final BackupRunManifest run;
+  final VoidCallback? onRetryFailures;
 
   void _showDetails(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (context) => _BackupRunDetailsDialog(run: run),
+      builder: (context) =>
+          _BackupRunDetailsDialog(run: run, onRetryFailures: onRetryFailures),
     );
   }
 
@@ -3114,6 +3198,12 @@ class _BackupRunSummary extends StatelessWidget {
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
               ),
+              if (run.hasRetryableFailures)
+                TextButton.icon(
+                  onPressed: onRetryFailures,
+                  icon: const Icon(Icons.replay_outlined, size: 16),
+                  label: Text('Retry ${run.retryableFailureCount}'),
+                ),
               TextButton.icon(
                 onPressed: () => _showDetails(context),
                 icon: const Icon(Icons.fact_check_outlined, size: 16),
@@ -3164,9 +3254,13 @@ class _BackupRunSummary extends StatelessWidget {
 }
 
 class _BackupRunDetailsDialog extends StatelessWidget {
-  const _BackupRunDetailsDialog({required this.run});
+  const _BackupRunDetailsDialog({
+    required this.run,
+    required this.onRetryFailures,
+  });
 
   final BackupRunManifest run;
+  final VoidCallback? onRetryFailures;
 
   @override
   Widget build(BuildContext context) {
@@ -3199,6 +3293,12 @@ class _BackupRunDetailsDialog extends StatelessWidget {
                 value: _formatDateTime(run.completedAt),
               ),
               _IntegrityDetailLine(label: 'Manifest ID', value: run.id),
+              _IntegrityDetailLine(label: 'Run mode', value: run.runMode),
+              if (run.retryOfRunId != null)
+                _IntegrityDetailLine(
+                  label: 'Retry of run',
+                  value: run.retryOfRunId!,
+                ),
               const SizedBox(height: 14),
               Text(
                 'Notebook Outcomes',
@@ -3255,6 +3355,17 @@ class _BackupRunDetailsDialog extends StatelessWidget {
         ),
       ),
       actions: [
+        if (run.hasRetryableFailures)
+          TextButton.icon(
+            onPressed: onRetryFailures == null
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    onRetryFailures!();
+                  },
+            icon: const Icon(Icons.replay_outlined, size: 16),
+            label: Text('Retry ${run.retryableFailureCount} eligible'),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),

@@ -55,10 +55,13 @@ in the app and in the documentation so backup failures are easier to understand.
   payload indexing, LabArchives-viewable status, byte size, and restore action.
 - Verifies reported original attachment files by byte size before marking a
   notebook backup successful.
+- Retries eligible skipped notebooks from the latest run while leaving
+  owner-rights skips as clear PI/owner guidance.
 - Seals each successful backup with a SHA-256 integrity manifest and warns in
   the viewer if any protected file changes later.
 - Exports local audit summaries for backup runs as Markdown, JSON, and CSV
-  sidecars without exposing credentials.
+  sidecars without exposing credentials, including compact archive diagnostics
+  for support review.
 - Stores credentials, user access XML, notebook IDs, schedules, and backups in
   local ignored paths or in the user-selected backup folder.
 - Supports manual backup plus daily or weekly scheduled backup while the app is
@@ -110,10 +113,12 @@ tool/
 
 - [Quickstart PDF](docs/user/BenchVault_Quickstart.pdf)
 - [Quickstart source](docs/user/quickstart.md)
+- [Trust, safety, and correctness model](docs/trust_safety_and_correctness.md)
 - [Strategic implementation plan](docs/strategic_plan.md)
 - [Implementation limitations](docs/implementation_limitations.md)
 - [Platform release checklist](docs/platform_release_checklist.md)
 - [LabArchives GOV API working reference](docs/developer/labarchives_gov_api_reference.md)
+- [Release notes](docs/releases)
 - [Documentation index](docs/README.md)
 
 The original LabArchives API source PDF is intentionally local-only under
@@ -161,7 +166,7 @@ python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-b
 dart run tool/backup_once.dart
 python3 tool/build_quickstart_pdf.py
 scripts/release_smoke_check.sh
-scripts/package_macos_release.sh 1.0.1
+scripts/package_macos_release.sh 1.0.4
 ```
 
 Release automation:

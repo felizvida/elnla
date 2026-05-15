@@ -236,7 +236,10 @@ summary, compact per-notebook outcome rows, and a detail dialog with suggested
 next actions and run logs. It also shows persistent notebook status cards that
 combine latest outcome, prior local copies, and original-attachment verification
 state. Run manifests now include queue position and per-notebook timing so a
-future retry/cancellation UI can be added without changing the manifest shape.
+future cancellation UI can be added without changing the manifest shape. The
+latest-run summary can now retry eligible skipped notebooks, while owner-rights
+failures remain informational because a retry cannot make a non-owner account
+eligible for full-size backup.
 
 Implementation tasks:
 
@@ -249,6 +252,8 @@ Implementation tasks:
 - Continue expanding stable user-facing failure categories.
 - Continue preserving run-level logs in local backup metadata without storing
   credentials.
+- Add cancellation and resumability research after the current atomic download
+  path has been tested against very large notebooks.
 
 Exit criteria:
 
@@ -315,7 +320,9 @@ integrity detail dialog with manifest path, local seal state, checked file
 count, checked bytes, manifest hashes, and changed, missing, or unexpected
 files. It can export a local audit packet with Markdown, JSON, and CSV sidecars
 plus a portable external hash-anchor text file under the backup run's `audit/`
-folder.
+folder. The audit packet now includes compact archive diagnostics for support
+review: source layout, tree counts, entry-part counts, attachment counts,
+thumbnail counts, and part-type counts.
 
 Implementation tasks:
 

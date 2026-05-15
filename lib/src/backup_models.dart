@@ -147,6 +147,7 @@ class BackupNotebookOutcome {
     required this.status,
     required this.category,
     required this.message,
+    this.notebookNbid,
     this.nextAction,
     this.backupRecordId,
     this.queueIndex,
@@ -160,6 +161,7 @@ class BackupNotebookOutcome {
   });
 
   final String notebookName;
+  final String? notebookNbid;
   final BackupOutcomeStatus status;
   final BackupFailureCategory category;
   final String message;
@@ -175,6 +177,9 @@ class BackupNotebookOutcome {
   final int? expectedOriginalAttachmentCount;
 
   bool get isSuccess => status == BackupOutcomeStatus.success;
+
+  bool get isRetryable =>
+      !isSuccess && category != BackupFailureCategory.notOwner;
 
   Duration? get duration {
     final start = startedAt;
@@ -200,6 +205,7 @@ class BackupNotebookOutcome {
 
   Map<String, Object?> toJson() => {
     'notebookName': notebookName,
+    'notebookNbid': notebookNbid,
     'status': status.name,
     'category': category.name,
     'message': message,
@@ -219,6 +225,7 @@ class BackupNotebookOutcome {
   static BackupNotebookOutcome fromJson(Map<String, Object?> json) {
     return BackupNotebookOutcome(
       notebookName: json['notebookName'] as String? ?? 'Notebook',
+      notebookNbid: json['notebookNbid'] as String?,
       status: BackupOutcomeStatus.values.firstWhere(
         (value) => value.name == json['status'],
         orElse: () => BackupOutcomeStatus.skipped,
@@ -253,6 +260,8 @@ class BackupRunManifest {
     required this.outcomes,
     required this.records,
     required this.log,
+    this.runMode = 'full',
+    this.retryOfRunId,
   });
 
   final String id;
@@ -262,12 +271,52 @@ class BackupRunManifest {
   final List<BackupNotebookOutcome> outcomes;
   final List<BackupRecord> records;
   final List<String> log;
+  final String runMode;
+  final String? retryOfRunId;
 
   int get successCount => outcomes.where((outcome) => outcome.isSuccess).length;
 
   int get skippedCount => outcomes.length - successCount;
 
   bool get hasFailures => skippedCount > 0;
+
+  int get retryableFailureCount =>
+      outcomes.where((outcome) => outcome.isRetryable).length;
+
+  bool get hasRetryableFailures => retryableFailureCount > 0;
+
+  List<BackupNotebookOutcome> get failedOutcomes =>
+      outcomes.where((outcome) => !outcome.isSuccess).toList();
+
+  String get noSuccessfulBackupsMessage {
+    final failures = failedOutcomes;
+    if (failures.isEmpty) {
+      return 'No notebooks were backed up because no notebooks were selected.';
+    }
+    final categories = failures.map((outcome) => outcome.category).toSet()
+      ..remove(BackupFailureCategory.none);
+    final onlyCategory = categories.length == 1
+        ? categories.single
+        : BackupFailureCategory.none;
+
+    return switch (onlyCategory) {
+      BackupFailureCategory.notOwner =>
+        'No notebooks could be backed up with the current user rights. At NIH/NICHD, full-size notebook backup is owner-only, and lab notebook owners are lab chiefs/PIs.',
+      BackupFailureCategory.authorization =>
+        'No notebooks could be backed up because LabArchives authorization failed. Reconnect LabArchives credentials and try again.',
+      BackupFailureCategory.storage =>
+        'No notebooks could be backed up because local storage failed. Check free disk space and folder permissions, then try again.',
+      BackupFailureCategory.extraction =>
+        'No notebooks could be backed up because the downloaded archives could not be extracted. Install or repair the local unzip tools and try again.',
+      BackupFailureCategory.verification =>
+        'No notebooks could be backed up because full-size content verification failed. Review the latest run details before relying on this backup.',
+      BackupFailureCategory.network =>
+        'No notebooks could be backed up because LabArchives could not be reached reliably. Check the network or VPN connection and try again.',
+      BackupFailureCategory.setup =>
+        'No notebooks could be backed up because local setup is incomplete. Finish first-run setup and try again.',
+      _ => _mixedFailureMessage(failures, categories),
+    };
+  }
 
   String get createdAtLabel {
     final local = createdAt.toLocal();
@@ -284,13 +333,15 @@ class BackupRunManifest {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 2,
+    'version': 3,
     'id': id,
     'createdAt': createdAt.toIso8601String(),
     'completedAt': completedAt.toIso8601String(),
     'totalNotebookCount': totalNotebookCount,
     'successCount': successCount,
     'skippedCount': skippedCount,
+    'runMode': runMode,
+    'retryOfRunId': retryOfRunId,
     'outcomes': outcomes.map((outcome) => outcome.toJson()).toList(),
     'records': records.map((record) => record.toJson()).toList(),
     'log': log,
@@ -342,8 +393,33 @@ class BackupRunManifest {
       log: (json['log'] as List<Object?>? ?? const [])
           .map((value) => value.toString())
           .toList(),
+      runMode: json['runMode'] as String? ?? 'full',
+      retryOfRunId: json['retryOfRunId'] as String?,
     );
   }
+}
+
+String _mixedFailureMessage(
+  List<BackupNotebookOutcome> failures,
+  Set<BackupFailureCategory> categories,
+) {
+  final labels = categories.isEmpty
+      ? 'Unknown'
+      : (categories.toList()..sort((a, b) => a.label.compareTo(b.label)))
+            .map((category) => category.label)
+            .join(', ');
+  String? nextAction;
+  for (final outcome in failures) {
+    final value = outcome.nextAction?.trim();
+    if (value != null && value.isNotEmpty) {
+      nextAction = value;
+      break;
+    }
+  }
+  return [
+    'No notebooks could be backed up. Failure categories: $labels.',
+    ?nextAction,
+  ].join(' ');
 }
 
 class BackupIntegrityCheck {

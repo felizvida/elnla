@@ -140,11 +140,12 @@ void main() {
       id: 'run_001',
       createdAt: DateTime.utc(2026, 5, 14, 12),
       completedAt: DateTime.utc(2026, 5, 14, 12, 2),
-      totalNotebookCount: 2,
+      totalNotebookCount: 3,
       records: [record],
       outcomes: [
         BackupNotebookOutcome(
           notebookName: 'Demo',
+          notebookNbid: 'fake-demo-nbid',
           status: BackupOutcomeStatus.success,
           category: BackupFailureCategory.none,
           message: 'Backed up successfully.',
@@ -161,6 +162,14 @@ void main() {
           message: 'Full-size backup is owner-only for this notebook.',
           nextAction: 'Ask the PI owner to run the backup.',
         ),
+        const BackupNotebookOutcome(
+          notebookName: 'Transient network skip',
+          notebookNbid: 'fake-network-nbid',
+          status: BackupOutcomeStatus.skipped,
+          category: BackupFailureCategory.network,
+          message: 'Connection interrupted.',
+          nextAction: 'Check the network connection and try again.',
+        ),
       ],
       log: const ['Finished Demo', 'Skipped Visible but not owned'],
     );
@@ -172,10 +181,55 @@ void main() {
 
     expect(loaded, isNotNull);
     expect(loaded!.successCount, 1);
-    expect(loaded.skippedCount, 1);
-    expect(loaded.totalNotebookCount, 2);
-    expect(loaded.outcomes.last.category, BackupFailureCategory.notOwner);
+    expect(loaded.skippedCount, 2);
+    expect(loaded.totalNotebookCount, 3);
+    expect(loaded.outcomes.first.notebookNbid, 'fake-demo-nbid');
+    expect(loaded.outcomes[1].category, BackupFailureCategory.notOwner);
+    expect(loaded.outcomes[1].isRetryable, isFalse);
+    expect(loaded.outcomes.last.category, BackupFailureCategory.network);
+    expect(loaded.outcomes.last.isRetryable, isTrue);
+    expect(loaded.retryableFailureCount, 1);
     expect(loaded.log, contains('Finished Demo'));
+
+    final ownerOnlyRun = BackupRunManifest(
+      id: 'owner_only',
+      createdAt: DateTime.utc(2026, 5, 14),
+      completedAt: DateTime.utc(2026, 5, 14, 0, 1),
+      totalNotebookCount: 1,
+      records: const [],
+      outcomes: const [
+        BackupNotebookOutcome(
+          notebookName: 'PI notebook',
+          status: BackupOutcomeStatus.skipped,
+          category: BackupFailureCategory.notOwner,
+          message: 'Full-size backup is owner-only for this notebook.',
+        ),
+      ],
+      log: const [],
+    );
+    expect(ownerOnlyRun.noSuccessfulBackupsMessage, contains('lab chiefs/PIs'));
+
+    final networkOnlyRun = BackupRunManifest(
+      id: 'network_only',
+      createdAt: DateTime.utc(2026, 5, 14),
+      completedAt: DateTime.utc(2026, 5, 14, 0, 1),
+      totalNotebookCount: 1,
+      records: const [],
+      outcomes: const [
+        BackupNotebookOutcome(
+          notebookName: 'Network notebook',
+          status: BackupOutcomeStatus.skipped,
+          category: BackupFailureCategory.network,
+          message: 'Connection interrupted.',
+        ),
+      ],
+      log: const [],
+    );
+    expect(networkOnlyRun.noSuccessfulBackupsMessage, contains('network'));
+    expect(
+      networkOnlyRun.noSuccessfulBackupsMessage,
+      isNot(contains('lab chiefs/PIs')),
+    );
   });
 
   test(
@@ -233,6 +287,104 @@ void main() {
       expect(await restored.readAsBytes(), [1, 2, 3, 4]);
     },
   );
+
+  test('backup metadata paths cannot escape backup roots', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_path_confinement_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final service = BackupService(root: root);
+    final outside = File('${root.path}/outside_secret.txt');
+    await outside.writeAsString('not a backed-up attachment');
+    final destination = Directory('${root.path}/restored');
+    final record = BackupRecord(
+      id: 'run_escape_demo',
+      notebookName: 'Escape Demo',
+      createdAt: DateTime.utc(2026, 5, 14),
+      archivePath: 'notebooks/demo/2026/05/14/run_escape/notebook.7z',
+      renderPath: outside.path,
+      pageCount: 1,
+    );
+
+    await expectLater(
+      service.loadRenderNotebook(record),
+      throwsA(isA<StateError>()),
+    );
+
+    await expectLater(
+      service.restoreAttachment(
+        record: record.copyWith(
+          renderPath: 'notebooks/demo/2026/05/14/run_escape/render.json',
+        ),
+        part: RenderPart(
+          id: 3,
+          kindCode: 2,
+          kindLabel: 'Attachment',
+          renderText: 'caption',
+          position: 1,
+          attachmentName: 'outside_secret.txt',
+          attachmentOriginalPath: outside.path,
+        ),
+        destination: destination,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    await expectLater(
+      service.restoreAttachment(
+        record: record.copyWith(
+          renderPath: 'notebooks/demo/2026/05/14/run_escape/render.json',
+        ),
+        part: const RenderPart(
+          id: 4,
+          kindCode: 2,
+          kindLabel: 'Attachment',
+          renderText: 'caption',
+          position: 1,
+          attachmentName: 'outside_secret.txt',
+          attachmentOriginalPath: '../outside_secret.txt',
+        ),
+        destination: destination,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    await expectLater(
+      service.restoreAttachment(
+        record: record.copyWith(
+          renderPath: 'notebooks/demo/2026/05/14/run_escape/render.json',
+        ),
+        part: const RenderPart(
+          id: 5,
+          kindCode: 2,
+          kindLabel: 'Attachment',
+          renderText: 'caption',
+          position: 1,
+          attachmentName: '../outside_secret.txt',
+        ),
+        destination: destination,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    final sibling = File('${root.path}/backups_evil/render_notebook.json');
+    await sibling.parent.create(recursive: true);
+    await sibling.writeAsString(
+      jsonEncode({
+        'name': 'Sibling',
+        'createdAt': DateTime.utc(2026, 5, 14).toIso8601String(),
+        'archivePath': 'backups_evil/notebook.7z',
+        'nodes': <Object?>[],
+      }),
+    );
+    await expectLater(
+      service.loadRenderNotebook(
+        record.copyWith(renderPath: 'backups_evil/render_notebook.json'),
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+  });
 
   test('loadAttachmentTextPreview reads safe bounded text only', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -561,73 +713,168 @@ void main() {
     expect(tampered.statusTitle, 'Backup contents changed');
   });
 
-  test(
-    'audit export writes markdown json and csv with relative paths',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'benchvault_audit_export_test_',
-      );
-      addTearDown(() => root.delete(recursive: true));
+  test('integrity seal rejects broken local ledger chain', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_integrity_chain_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
 
-      final service = BackupService(root: root);
+    final service = BackupService(root: root);
+
+    Future<BackupRecord> createSealedRecord(String runId, int byteValue) async {
       final runDir = Directory(
-        '${root.path}/backups/notebooks/demo/2026/05/14/run_004',
+        '${root.path}/backups/notebooks/demo/2026/05/14/$runId',
       );
       await runDir.create(recursive: true);
-      await File('${runDir.path}/notebook.7z').writeAsBytes([4, 5, 6]);
+      await File('${runDir.path}/notebook.7z').writeAsBytes([byteValue]);
       await File('${runDir.path}/render_notebook.json').writeAsString(
         jsonEncode({
-          'name': 'Audit Demo',
+          'name': 'Integrity Demo $runId',
           'createdAt': DateTime.utc(2026, 5, 14).toIso8601String(),
-          'archivePath': 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+          'archivePath': 'notebooks/demo/2026/05/14/$runId/notebook.7z',
           'nodes': <Object?>[],
         }),
       );
       final record = BackupRecord(
-        id: 'run_004_demo',
-        notebookName: 'Audit Demo',
+        id: '${runId}_demo',
+        notebookName: 'Integrity Demo $runId',
         createdAt: DateTime.utc(2026, 5, 14),
-        archivePath: 'notebooks/demo/2026/05/14/run_004/notebook.7z',
-        renderPath: 'notebooks/demo/2026/05/14/run_004/render_notebook.json',
+        archivePath: 'notebooks/demo/2026/05/14/$runId/notebook.7z',
+        renderPath: 'notebooks/demo/2026/05/14/$runId/render_notebook.json',
         pageCount: 0,
-        contentVerification: const BackupContentVerification(
-          archiveBytes: 3,
-          expectedOriginalAttachmentCount: 0,
-          verifiedOriginalAttachmentCount: 0,
-          expectedOriginalAttachmentBytes: 0,
-          verifiedOriginalAttachmentBytes: 0,
-          manifestPath:
-              'notebooks/demo/2026/05/14/run_004/original_files_manifest.json',
-          missingOriginals: [],
-          sizeMismatches: [],
-        ),
       );
+      return service.sealBackupIntegrity(record);
+    }
 
-      final sealed = await service.sealBackupIntegrity(record);
-      final audit = await service.exportAuditSummary(sealed);
+    final first = await createSealedRecord('run_chain_001', 1);
+    final second = await createSealedRecord('run_chain_002', 2);
+    expect((await service.verifyBackupIntegrity(first)).isVerified, isTrue);
+    expect((await service.verifyBackupIntegrity(second)).isVerified, isTrue);
 
-      expect(audit.markdownPath, isNot(startsWith(root.path)));
-      expect(audit.jsonPath, isNot(startsWith(root.path)));
-      expect(audit.csvPath, isNot(startsWith(root.path)));
-      expect(audit.hashAnchorPath, isNot(startsWith(root.path)));
-      expect(audit.integrityCheck.isVerified, isTrue);
-      expect(
-        await File('${root.path}/backups/${audit.markdownPath}').readAsString(),
-        contains('BenchVault Backup Audit Summary'),
-      );
-      expect(
-        await File('${root.path}/backups/${audit.csvPath}').readAsString(),
-        contains('path,bytes,sha256,modifiedAt'),
-      );
-      expect(
-        await File(
-          '${root.path}/backups/${audit.hashAnchorPath}',
-        ).readAsString(),
-        contains('Manifest SHA-256'),
-      );
+    final ledger = File(
+      '${root.path}/local_credentials/integrity_ledger.jsonl',
+    );
+    final lines = await ledger.readAsLines();
+    expect(lines, hasLength(2));
+    await ledger.writeAsString('${lines.last}\n');
 
-      final afterExport = await service.verifyBackupIntegrity(sealed);
-      expect(afterExport.isVerified, isTrue);
-    },
-  );
+    final brokenChain = await service.verifyBackupIntegrity(second);
+    expect(brokenChain.isVerified, isFalse);
+    expect(brokenChain.hasLocalSeal, isFalse);
+    expect(brokenChain.statusTitle, 'Local integrity seal missing');
+  });
+
+  test('audit export writes markdown json and csv with relative paths', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_audit_export_test_',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final service = BackupService(root: root);
+    final runDir = Directory(
+      '${root.path}/backups/notebooks/demo/2026/05/14/run_004',
+    );
+    await runDir.create(recursive: true);
+    await File('${runDir.path}/notebook.7z').writeAsBytes([4, 5, 6]);
+    await File('${runDir.path}/render_notebook.json').writeAsString(
+      jsonEncode({
+        'name': 'Audit Demo',
+        'createdAt': DateTime.utc(2026, 5, 14).toIso8601String(),
+        'archivePath': 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+        'sourceLayout': 'sqlite',
+        'nodes': [
+          {
+            'id': 1,
+            'parentId': 0,
+            'title': 'Attachment review',
+            'isPage': true,
+            'position': 1,
+            'parts': [
+              {
+                'id': 8,
+                'kindCode': 2,
+                'kindLabel': 'Attachment',
+                'renderText': 'Microscopy export',
+                'position': 1,
+                'attachmentName': 'image.czi',
+                'attachmentOriginalPath':
+                    'notebooks/demo/2026/05/14/run_004/extracted/notebook/attachments/8/2/original/image.czi',
+                'attachmentThumbnailPath':
+                    'notebooks/demo/2026/05/14/run_004/extracted/notebook/attachments/8/2/thumb/image.png',
+                'attachmentVersion': 2,
+                'attachmentOriginalVersion': 2,
+                'comments': [
+                  {
+                    'id': 9,
+                    'text': 'QA checked image attachment.',
+                    'createdAt': '2026-05-14T13:00:00Z',
+                    'author': 'QA',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    final record = BackupRecord(
+      id: 'run_004_demo',
+      notebookName: 'Audit Demo',
+      createdAt: DateTime.utc(2026, 5, 14),
+      archivePath: 'notebooks/demo/2026/05/14/run_004/notebook.7z',
+      renderPath: 'notebooks/demo/2026/05/14/run_004/render_notebook.json',
+      pageCount: 0,
+      contentVerification: const BackupContentVerification(
+        archiveBytes: 3,
+        expectedOriginalAttachmentCount: 0,
+        verifiedOriginalAttachmentCount: 0,
+        expectedOriginalAttachmentBytes: 0,
+        verifiedOriginalAttachmentBytes: 0,
+        manifestPath:
+            'notebooks/demo/2026/05/14/run_004/original_files_manifest.json',
+        missingOriginals: [],
+        sizeMismatches: [],
+      ),
+    );
+
+    final sealed = await service.sealBackupIntegrity(record);
+    final audit = await service.exportAuditSummary(sealed);
+
+    expect(audit.markdownPath, isNot(startsWith(root.path)));
+    expect(audit.jsonPath, isNot(startsWith(root.path)));
+    expect(audit.csvPath, isNot(startsWith(root.path)));
+    expect(audit.hashAnchorPath, isNot(startsWith(root.path)));
+    expect(audit.integrityCheck.isVerified, isTrue);
+    expect(
+      await File('${root.path}/backups/${audit.markdownPath}').readAsString(),
+      contains('BenchVault Backup Audit Summary'),
+    );
+    expect(
+      await File('${root.path}/backups/${audit.markdownPath}').readAsString(),
+      contains('Archive Diagnostics'),
+    );
+    expect(
+      await File('${root.path}/backups/${audit.csvPath}').readAsString(),
+      contains('path,bytes,sha256,modifiedAt'),
+    );
+    expect(
+      await File('${root.path}/backups/${audit.hashAnchorPath}').readAsString(),
+      contains('Manifest SHA-256'),
+    );
+    final auditJson =
+        jsonDecode(
+              await File(
+                '${root.path}/backups/${audit.jsonPath}',
+              ).readAsString(),
+            )
+            as Map<String, Object?>;
+    final diagnostics = auditJson['archiveDiagnostics'] as Map<String, Object?>;
+    expect(diagnostics['sourceLayout'], 'sqlite');
+    expect(diagnostics['attachmentCount'], 1);
+    expect(diagnostics['attachmentThumbnailCount'], 1);
+    expect(diagnostics['attachmentVersionCount'], 1);
+
+    final afterExport = await service.verifyBackupIntegrity(sealed);
+    expect(afterExport.isVerified, isTrue);
+  });
 }

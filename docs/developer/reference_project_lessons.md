@@ -28,6 +28,11 @@ Useful ideas for BenchVault:
 BenchVault adaptations already started:
 
 - Backup run manifests now preserve queue position and per-notebook timing.
+- Runs now preserve retryable failure metadata. The app can retry eligible
+  skipped notebooks from the latest run while deliberately excluding owner-rights
+  failures.
+- Notebook downloads stream to a local partial archive and are moved into place
+  only after the download completes.
 - The product roadmap keeps offsite/WORM storage separate from the local-first
   desktop core.
 
@@ -55,6 +60,8 @@ BenchVault adaptations already started:
   thumbnail path when available.
 - The viewer can show preserved thumbnails while keeping restore-first behavior
   for original files.
+- Audit exports now include compact archive diagnostics: source layout, tree and
+  part counts, attachment counts, thumbnail counts, and part-type counts.
 
 ## Guardrails
 

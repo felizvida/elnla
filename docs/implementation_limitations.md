@@ -66,9 +66,15 @@ work.
 - Failed per-notebook backup attempts are removed from the backup folder after
   failure. The user sees the skip reason in the log, but partial failed payloads
   are not kept for later forensic review.
+- Downloads are streamed into a temporary `.part` archive and moved into place
+  only after the HTTP response completes, reducing the chance that an interrupted
+  download is mistaken for a finished archive.
 - Backups are full-run copies, not incremental or resumable downloads. Large
   notebooks may take time and storage, and an interrupted backup must be run
   again.
+- The latest run can retry eligible skipped notebooks. Owner-rights failures are
+  not treated as retryable because only notebook owners can download full-size
+  backups.
 - The app does not yet implement retention rules, deduplication, quota warnings,
   checksum export to external media, or automatic offsite replication.
 
@@ -161,6 +167,12 @@ work.
 - The current seal uses SHA-256 hashes and local ledger chaining. It does not
   timestamp with an external trusted timestamp authority, notarize records, or
   anchor hashes in an external append-only log.
+- Backup metadata paths are treated as untrusted. BenchVault rejects absolute
+  paths, drive-letter paths, UNC-style paths, `..` traversal, and symlink targets
+  that resolve outside configured backup folders. This protects the viewer and
+  attachment restore flow from malformed local metadata, but it does not protect
+  against a fully compromised operating system or malicious replacement of the
+  application itself.
 - Derived files such as `render_notebook.json`, readable Markdown, and search
   chunks are convenience views. The LabArchives `.7z` archive and manifests
   should remain the preservation reference.

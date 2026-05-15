@@ -6,6 +6,9 @@ import 'package:crypto/crypto.dart';
 
 import 'backup_models.dart';
 
+typedef DownloadProgressCallback =
+    void Function(int receivedBytes, int? totalBytes);
+
 enum LabArchivesReadOnlyOperation {
   notebookBackup('notebooks', 'notebook_backup', {'uid', 'nbid', 'json'}),
   userAccessInfo('users', 'user_access_info', {'login_or_email', 'password'});
@@ -113,6 +116,7 @@ class LabArchivesClient {
   Future<File> downloadNotebookBackup({
     required NotebookSummary notebook,
     required File destination,
+    DownloadProgressCallback? onProgress,
   }) async {
     final userId = uid;
     if (userId == null || userId.isEmpty) {
@@ -137,9 +141,38 @@ class LabArchivesClient {
       );
     }
     await destination.parent.create(recursive: true);
-    final sink = destination.openWrite();
-    await response.pipe(sink);
-    return destination;
+    final partial = File('${destination.path}.part');
+    if (await partial.exists()) {
+      await partial.delete();
+    }
+    IOSink? sink;
+    try {
+      sink = partial.openWrite();
+      var received = 0;
+      final total = response.contentLength >= 0 ? response.contentLength : null;
+      await for (final chunk in response) {
+        received += chunk.length;
+        sink.add(chunk);
+        onProgress?.call(received, total);
+      }
+      await sink.close();
+      sink = null;
+      if (await destination.exists()) {
+        await destination.delete();
+      }
+      await partial.rename(destination.path);
+      return destination;
+    } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {
+        // Best-effort cleanup after an interrupted response.
+      }
+      if (await partial.exists()) {
+        await partial.delete();
+      }
+      rethrow;
+    }
   }
 
   Future<String> fetchUserAccessInfoXml({

@@ -804,6 +804,7 @@ class BackupService {
     final csvPath = _relativeTo(backupRoot.path, csvFile.path);
     final hashAnchorPath = _relativeTo(backupRoot.path, hashAnchorFile.path);
     final manifestEntries = await _integrityManifestEntries(record);
+    final archiveDiagnostics = await _archiveDiagnostics(record);
 
     final summary = <String, Object?>{
       'version': 1,
@@ -813,6 +814,7 @@ class BackupService {
           'BenchVault audit summaries are local tamper-evidence aids. They do not replace institutional records policy, chain-of-custody review, or legal certification.',
       'backup': record.toJson(),
       'integrityCheck': check.toJson(),
+      'archiveDiagnostics': archiveDiagnostics,
       'exports': {
         'markdownPath': markdownPath,
         'jsonPath': jsonPath,
@@ -833,6 +835,7 @@ class BackupService {
         csvPath: csvPath,
         hashAnchorPath: hashAnchorPath,
         manifestEntries: manifestEntries,
+        archiveDiagnostics: archiveDiagnostics,
       ),
     );
     await csvFile.writeAsString(_auditCsv(manifestEntries));
@@ -872,6 +875,53 @@ class BackupService {
         .toList();
   }
 
+  Future<Map<String, Object?>> _archiveDiagnostics(BackupRecord record) async {
+    final notebook = await loadRenderNotebook(record);
+    final nodes = notebook.nodes;
+    final parts = nodes.expand((node) => node.parts).toList();
+    final attachmentParts = parts
+        .where((part) => part.attachmentName != null)
+        .toList();
+    final kindCounts = <String, int>{};
+    for (final part in parts) {
+      final key = part.kindLabel.trim().isEmpty
+          ? 'type ${part.kindCode}'
+          : part.kindLabel.trim();
+      kindCounts[key] = (kindCounts[key] ?? 0) + 1;
+    }
+    final verification = record.contentVerification;
+    return {
+      'version': 1,
+      'sourceLayout': notebook.sourceLayout,
+      'nodeCount': nodes.length,
+      'pageCount': nodes.where((node) => node.isPage).length,
+      'folderCount': nodes.where((node) => !node.isPage).length,
+      'partCount': parts.length,
+      'commentCount': parts.fold<int>(
+        0,
+        (total, part) => total + part.comments.length,
+      ),
+      'attachmentCount': attachmentParts.length,
+      'attachmentOriginalPathCount': attachmentParts
+          .where((part) => part.attachmentOriginalPath != null)
+          .length,
+      'attachmentThumbnailCount': attachmentParts
+          .where((part) => part.attachmentThumbnailPath != null)
+          .length,
+      'attachmentVersionCount': attachmentParts
+          .where((part) => part.attachmentVersion != null)
+          .length,
+      'attachmentOriginalVersionCount': attachmentParts
+          .where((part) => part.attachmentOriginalVersion != null)
+          .length,
+      'verifiedOriginalAttachmentCount':
+          verification?.verifiedOriginalAttachmentCount,
+      'expectedOriginalAttachmentCount':
+          verification?.expectedOriginalAttachmentCount,
+      'partKindCounts': kindCounts,
+    };
+  }
+
   String _auditMarkdown({
     required BackupRecord record,
     required BackupIntegrityCheck check,
@@ -880,6 +930,7 @@ class BackupService {
     required String csvPath,
     required String hashAnchorPath,
     required List<Map<String, Object?>> manifestEntries,
+    required Map<String, Object?> archiveDiagnostics,
   }) {
     final buffer = StringBuffer()
       ..writeln('# BenchVault Backup Audit Summary')
@@ -928,6 +979,40 @@ class BackupService {
         ..writeln(
           '- Verified original bytes: `${verification.verifiedOriginalAttachmentBytes}`',
         );
+    }
+    buffer
+      ..writeln()
+      ..writeln('## Archive Diagnostics')
+      ..writeln()
+      ..writeln(
+        'These diagnostics describe the backed-up archive structure for support and review. They do not expose raw SQL tables in the normal viewer.',
+      )
+      ..writeln()
+      ..writeln('- Source layout: `${archiveDiagnostics['sourceLayout']}`')
+      ..writeln('- Pages: `${archiveDiagnostics['pageCount']}`')
+      ..writeln('- Tree nodes: `${archiveDiagnostics['nodeCount']}`')
+      ..writeln('- Entry parts: `${archiveDiagnostics['partCount']}`')
+      ..writeln('- Comments: `${archiveDiagnostics['commentCount']}`')
+      ..writeln('- Attachments: `${archiveDiagnostics['attachmentCount']}`')
+      ..writeln(
+        '- Attachment thumbnails: `${archiveDiagnostics['attachmentThumbnailCount']}`',
+      )
+      ..writeln(
+        '- Attachment originals with version metadata: `${archiveDiagnostics['attachmentVersionCount']}`',
+      )
+      ..writeln()
+      ..writeln('### Part Types')
+      ..writeln();
+    final rawKindCounts = archiveDiagnostics['partKindCounts'];
+    final kindEntries = rawKindCounts is Map
+        ? rawKindCounts.entries.toList()
+        : const <MapEntry<Object?, Object?>>[];
+    if (kindEntries.isEmpty) {
+      buffer.writeln('None.');
+    } else {
+      for (final entry in kindEntries) {
+        buffer.writeln('- `${entry.key}`: `${entry.value}`');
+      }
     }
     buffer
       ..writeln()
@@ -1017,7 +1102,7 @@ class BackupService {
       )
       ..writeln()
       ..writeln(
-        'Store this text or just the manifest SHA-256 in an institutional records system, WORM storage, or another append-only location to strengthen later originality review.',
+        'Store this text or just the manifest SHA-256 in an institutional records system, WORM storage, S3 Object Lock bucket, or another append-only location to strengthen later originality review.',
       );
     return buffer.toString();
   }
@@ -1170,6 +1255,59 @@ class BackupService {
   Future<List<BackupRecord>> backupAllNotebooks({
     ProgressCallback? onProgress,
   }) async {
+    return _withBackupLock(
+      onProgress: onProgress,
+      action: () async {
+        final notebooks = await loadNotebookSummaries();
+        return _backupSelectedNotebooksUnlocked(
+          notebooks: notebooks,
+          onProgress: onProgress,
+        );
+      },
+    );
+  }
+
+  Future<List<BackupRecord>> retryFailedNotebooksFromRun(
+    BackupRunManifest run, {
+    ProgressCallback? onProgress,
+  }) async {
+    return _withBackupLock(
+      onProgress: onProgress,
+      action: () async {
+        final notebooks = await loadNotebookSummaries();
+        final retryable = run.outcomes
+            .where((outcome) => outcome.isRetryable)
+            .toList();
+        if (retryable.isEmpty) {
+          throw StateError(
+            'This run has no retryable notebook failures. Owner-rights failures are not retried.',
+          );
+        }
+        final selected = _matchRetryableNotebooks(
+          notebooks: notebooks,
+          outcomes: retryable,
+        );
+        if (selected.isEmpty) {
+          throw StateError(
+            'The failed notebooks from run ${run.id} are no longer present in the local notebook list. Reconnect LabArchives setup and try again.',
+          );
+        }
+        return _backupSelectedNotebooksUnlocked(
+          notebooks: selected,
+          onProgress: onProgress,
+          runMode: 'retry',
+          retryOfRunId: run.id,
+          initialLogLine:
+              'Retrying ${selected.length} eligible skipped notebook${selected.length == 1 ? '' : 's'} from run ${run.id}.',
+        );
+      },
+    );
+  }
+
+  Future<T> _withBackupLock<T>({
+    required Future<T> Function() action,
+    ProgressCallback? onProgress,
+  }) async {
     await credentialsDir.create(recursive: true);
     final lock = await _backupLockFile.open(mode: FileMode.write);
     var locked = false;
@@ -1178,7 +1316,7 @@ class BackupService {
       await lock.lock();
       locked = true;
       onProgress?.call('Backup lock acquired.');
-      return await _backupAllNotebooksUnlocked(onProgress: onProgress);
+      return await action();
     } finally {
       if (locked) {
         await lock.unlock();
@@ -1187,10 +1325,37 @@ class BackupService {
     }
   }
 
-  Future<List<BackupRecord>> _backupAllNotebooksUnlocked({
+  List<NotebookSummary> _matchRetryableNotebooks({
+    required List<NotebookSummary> notebooks,
+    required List<BackupNotebookOutcome> outcomes,
+  }) {
+    final byNbid = {for (final notebook in notebooks) notebook.nbid: notebook};
+    final byName = <String, NotebookSummary>{};
+    for (final notebook in notebooks) {
+      byName.putIfAbsent(notebook.name, () => notebook);
+    }
+    final selected = <NotebookSummary>[];
+    final seenNbids = <String>{};
+    for (final outcome in outcomes) {
+      final nbid = outcome.notebookNbid?.trim();
+      final match = nbid != null && nbid.isNotEmpty
+          ? byNbid[nbid]
+          : byName[outcome.notebookName];
+      if (match == null || !seenNbids.add(match.nbid)) {
+        continue;
+      }
+      selected.add(match);
+    }
+    return selected;
+  }
+
+  Future<List<BackupRecord>> _backupSelectedNotebooksUnlocked({
+    required List<NotebookSummary> notebooks,
     ProgressCallback? onProgress,
+    String runMode = 'full',
+    String? retryOfRunId,
+    String? initialLogLine,
   }) async {
-    final notebooks = await loadNotebookSummaries();
     final client = await _client();
     final parser = BackupParser();
     final session = _timestamp();
@@ -1210,10 +1375,15 @@ class BackupService {
       onProgress?.call(message);
     }
 
+    if (initialLogLine != null) {
+      emit(initialLogLine);
+    }
+
     for (var index = 0; index < notebooks.length; index++) {
       final notebook = notebooks[index];
       final queueIndex = index + 1;
       final startedAt = DateTime.now().toUtc();
+      var lastDownloadProgress = 0;
       Directory? notebookDir;
       try {
         emit('Queued $queueIndex/${notebooks.length}: ${notebook.name}');
@@ -1234,6 +1404,21 @@ class BackupService {
         await client.downloadNotebookBackup(
           notebook: notebook,
           destination: archive,
+          onProgress: (receivedBytes, totalBytes) {
+            final shouldEmit =
+                receivedBytes == totalBytes ||
+                receivedBytes - lastDownloadProgress >= 25 * 1024 * 1024;
+            if (!shouldEmit) {
+              return;
+            }
+            lastDownloadProgress = receivedBytes;
+            final totalLabel = totalBytes == null
+                ? ''
+                : ' of ${_formatBytes(totalBytes)}';
+            emit(
+              'Downloaded ${_formatBytes(receivedBytes)}$totalLabel for ${notebook.name}',
+            );
+          },
         );
 
         emit('Extracting ${notebook.name}');
@@ -1294,6 +1479,7 @@ class BackupService {
         outcomes.add(
           BackupNotebookOutcome(
             notebookName: record.notebookName,
+            notebookNbid: notebook.nbid,
             status: BackupOutcomeStatus.success,
             category: BackupFailureCategory.none,
             message: 'Backed up successfully.',
@@ -1319,6 +1505,7 @@ class BackupService {
         outcomes.add(
           BackupNotebookOutcome(
             notebookName: notebook.name,
+            notebookNbid: notebook.nbid,
             status: BackupOutcomeStatus.skipped,
             category: failure.category,
             message: failure.message,
@@ -1333,7 +1520,7 @@ class BackupService {
       }
       await Future<void>.delayed(const Duration(seconds: 1));
     }
-    await _writeRunManifest(
+    final runManifest = await _writeRunManifest(
       runDir: runDir,
       session: session,
       records: records,
@@ -1342,11 +1529,11 @@ class BackupService {
       totalNotebookCount: notebooks.length,
       outcomes: outcomes,
       log: runLog,
+      runMode: runMode,
+      retryOfRunId: retryOfRunId,
     );
     if (records.isEmpty && notebooks.isNotEmpty) {
-      throw StateError(
-        'No notebooks could be backed up with the current user rights. At NIH/NICHD, full-size notebook backup is owner-only, and lab notebook owners are lab chiefs/PIs.',
-      );
+      throw StateError(runManifest.noSuccessfulBackupsMessage);
     }
     return records;
   }
@@ -1557,24 +1744,26 @@ class BackupService {
       return null;
     }
     Map<String, Object?>? found;
+    String? previousEntryHash;
     for (final line in await _integrityLedgerFile.readAsLines()) {
       if (line.trim().isEmpty) {
         continue;
       }
       final entry = jsonDecode(line) as Map<String, Object?>;
+      final entryHash = entry['entryHash'];
+      if (entryHash is! String || entryHash != _ledgerEntryHash(entry)) {
+        return null;
+      }
+      if (entry['previousEntryHash'] != previousEntryHash) {
+        return null;
+      }
       if (entry['backupId'] == backupId &&
           entry['manifestPath'] == manifestPath) {
         found = entry;
       }
+      previousEntryHash = entryHash;
     }
-    if (found == null) {
-      return null;
-    }
-    final expectedHash = found['entryHash'];
-    if (expectedHash is String && expectedHash == _ledgerEntryHash(found)) {
-      return found;
-    }
-    return null;
+    return found;
   }
 
   String _ledgerEntryHash(Map<String, Object?> entry) {
@@ -1920,32 +2109,126 @@ class BackupService {
   }
 
   Future<Directory> _backupRootForFile(File file) async {
-    final normalizedPath = file.absolute.path;
     for (final directory in await _backupSearchDirs()) {
-      final normalizedRoot = directory.absolute.path;
-      if (normalizedPath.startsWith(normalizedRoot)) {
+      if (_pathIsWithinOrSame(file.path, directory.path)) {
         return directory.absolute;
       }
     }
-    return root.absolute;
+    throw StateError('Backup file is outside configured backup folders.');
   }
 
   Future<File> _resolveBackupFile(String path) async {
-    final file = File(path);
-    if (file.isAbsolute) {
-      return file;
-    }
-    final rootFile = File(_join(root.path, path));
-    if (await rootFile.exists()) {
-      return rootFile;
-    }
-    for (final directory in await _backupSearchDirs()) {
-      final candidate = File(_join(directory.path, path));
-      if (await candidate.exists()) {
-        return candidate;
+    final safePath = _safeBackupMetadataPath(path);
+    final isLegacyProjectBackup = _isLegacyProjectBackupPath(safePath);
+    final rootFile = File(_join(root.path, safePath));
+    if (isLegacyProjectBackup) {
+      final legacyFile = await _existingContainedBackupFile(
+        rootFile,
+        backupDir.absolute,
+      );
+      if (legacyFile != null) {
+        return legacyFile;
       }
     }
-    return rootFile;
+    for (final directory in await _backupSearchDirs()) {
+      final candidate = File(_join(directory.path, safePath));
+      final contained = await _existingContainedBackupFile(
+        candidate,
+        directory.absolute,
+      );
+      if (contained != null) {
+        return contained;
+      }
+    }
+    if (isLegacyProjectBackup) {
+      return rootFile;
+    }
+    final searchDirs = await _backupSearchDirs();
+    return File(_join(searchDirs.first.path, safePath));
+  }
+
+  Future<File?> _existingContainedBackupFile(
+    File candidate,
+    Directory allowedRoot,
+  ) async {
+    if (!await candidate.exists()) {
+      return null;
+    }
+    if (!await _resolvedPathIsWithinOrSame(candidate, allowedRoot)) {
+      throw StateError(
+        'Backup file resolves outside configured backup folders.',
+      );
+    }
+    return candidate;
+  }
+
+  String _safeBackupMetadataPath(String path) {
+    return _safeRelativePathSegments(
+      path,
+      emptyMessage: 'Backup metadata path is empty.',
+      absoluteMessage: 'Backup metadata paths must be relative.',
+      traversalMessage: 'Backup metadata path escapes the backup folder.',
+    ).join(Platform.pathSeparator);
+  }
+
+  List<String> _safeRelativePathSegments(
+    String path, {
+    required String emptyMessage,
+    required String absoluteMessage,
+    required String traversalMessage,
+  }) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) {
+      throw StateError(emptyMessage);
+    }
+    if (_looksLikeAbsolutePath(trimmed)) {
+      throw StateError(absoluteMessage);
+    }
+    final segments = _portablePathSegments(trimmed);
+    if (segments.any((segment) => segment == '..' || segment == '.')) {
+      throw StateError(traversalMessage);
+    }
+    return segments;
+  }
+
+  bool _looksLikeAbsolutePath(String path) {
+    return File(path).isAbsolute ||
+        path.startsWith('/') ||
+        path.startsWith('\\') ||
+        RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path);
+  }
+
+  bool _isLegacyProjectBackupPath(String path) {
+    final segments = _portablePathSegments(path);
+    return segments.isNotEmpty && segments.first == 'backups';
+  }
+
+  List<String> _portablePathSegments(String path) {
+    return path
+        .split(RegExp(r'[\\/]+'))
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+  }
+
+  bool _pathIsWithinOrSame(String childPath, String parentPath) {
+    final child = File(childPath).absolute.path;
+    final parent = Directory(parentPath).absolute.path;
+    if (child == parent) {
+      return true;
+    }
+    final prefix = parent.endsWith(Platform.pathSeparator)
+        ? parent
+        : '$parent${Platform.pathSeparator}';
+    return child.startsWith(prefix);
+  }
+
+  Future<bool> _resolvedPathIsWithinOrSame(
+    FileSystemEntity child,
+    Directory parent,
+  ) async {
+    final resolvedChild = await child.resolveSymbolicLinks();
+    final resolvedParent = await parent.resolveSymbolicLinks();
+    return _pathIsWithinOrSame(resolvedChild, resolvedParent);
   }
 
   Future<File?> _resolveOriginalAttachment(
@@ -1964,9 +2247,16 @@ class BackupService {
     if (attachmentName == null || attachmentName.trim().isEmpty) {
       return null;
     }
+    final attachmentSegments = _safeRelativePathSegments(
+      attachmentName,
+      emptyMessage: 'Attachment filename is empty.',
+      absoluteMessage: 'Attachment filenames must be relative.',
+      traversalMessage: 'Attachment filename escapes the backup folder.',
+    );
+    final safeAttachmentPath = attachmentSegments.join(Platform.pathSeparator);
     final renderFile = await _resolveBackupFile(record.renderPath);
     final runDir = renderFile.parent;
-    final direct = File(
+    final originalDir = Directory(
       _join(
         runDir.path,
         'extracted',
@@ -1975,11 +2265,17 @@ class BackupService {
         part.id.toString(),
         '1',
         'original',
-        attachmentName,
       ),
     );
-    if (await direct.exists()) {
-      return direct;
+    final direct = File(_join(originalDir.path, safeAttachmentPath));
+    if (_pathIsWithinOrSame(direct.path, originalDir.path)) {
+      final containedDirect = await _existingContainedBackupFile(
+        direct,
+        runDir,
+      );
+      if (containedDirect != null) {
+        return containedDirect;
+      }
     }
 
     final partRoot = Directory(
@@ -1994,19 +2290,36 @@ class BackupService {
     if (!await partRoot.exists()) {
       return null;
     }
-    await for (final entity in partRoot.list(recursive: true)) {
+    await for (final entity in partRoot.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is! File) {
         continue;
       }
       final segments = entity.path.split(Platform.pathSeparator);
-      if (segments.contains('original') && segments.last == attachmentName) {
+      if (segments.contains('original') &&
+          _pathSegmentsEndWith(segments, attachmentSegments)) {
         return entity;
       }
     }
     return null;
   }
 
-  Future<void> _writeRunManifest({
+  bool _pathSegmentsEndWith(List<String> pathSegments, List<String> suffix) {
+    if (suffix.isEmpty || pathSegments.length < suffix.length) {
+      return false;
+    }
+    final offset = pathSegments.length - suffix.length;
+    for (var index = 0; index < suffix.length; index++) {
+      if (pathSegments[offset + index] != suffix[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<BackupRunManifest> _writeRunManifest({
     required Directory runDir,
     required String session,
     required List<BackupRecord> records,
@@ -2015,6 +2328,8 @@ class BackupService {
     required int totalNotebookCount,
     required List<BackupNotebookOutcome> outcomes,
     required List<String> log,
+    required String runMode,
+    required String? retryOfRunId,
   }) async {
     final manifest = File(_join(runDir.path, '$session.json'));
     final run = BackupRunManifest(
@@ -2025,10 +2340,13 @@ class BackupService {
       outcomes: outcomes,
       records: records,
       log: log,
+      runMode: runMode,
+      retryOfRunId: retryOfRunId,
     );
     await manifest.writeAsString(
       const JsonEncoder.withIndent('  ').convert(run.toJson()),
     );
+    return run;
   }
 
   UserAccessSnapshot _parseUserAccessInfo(String xml) {
@@ -2150,25 +2468,40 @@ class BackupService {
     final normalizedBase = Directory(base).absolute.path;
     final normalizedRoot = root.absolute.path;
     final normalizedPath = File(path).absolute.path;
-    if (normalizedPath.startsWith(normalizedBase)) {
+    if (_pathIsWithinOrSame(normalizedPath, normalizedBase)) {
       final relative = normalizedPath.substring(normalizedBase.length);
       return relative.startsWith(Platform.pathSeparator)
           ? relative.substring(1)
           : relative;
     }
-    if (normalizedPath.startsWith(normalizedRoot)) {
+    if (_pathIsWithinOrSame(normalizedPath, normalizedRoot)) {
       final relative = normalizedPath.substring(normalizedRoot.length);
       return relative.startsWith(Platform.pathSeparator)
           ? relative.substring(1)
           : relative;
     }
-    return path;
+    throw StateError('Path is outside BenchVault-managed roots.');
   }
 
   String _timestamp() {
     final now = DateTime.now().toUtc();
     String two(int value) => value.toString().padLeft(2, '0');
     return '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}Z';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    var value = bytes / 1024.0;
+    var unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    final digits = value >= 10 ? 0 : 1;
+    return '${value.toStringAsFixed(digits)} ${units[unitIndex]}';
   }
 
   String _safeName(String value) {
