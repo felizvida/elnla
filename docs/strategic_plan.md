@@ -366,15 +366,18 @@ Target outcome: platform claims match reality.
 
 Implementation tasks:
 
-- Validate Windows archive extraction, file paths, credential storage, folder
-  picker, and packaging.
-- Validate iPad Files access, secure storage, archive extraction feasibility,
-  UI ergonomics, and background limits.
+- Keep Windows CI build/package validation green, then validate archive
+  extraction, file paths, credential storage, folder picker, signing, installer
+  packaging, and workstation behavior on real Windows hosts.
+- Keep iPadOS no-codesign CI build/package validation green, then validate Files
+  access, secure storage, archive extraction feasibility, UI ergonomics,
+  background limits, Apple signing, and TestFlight or managed-app distribution.
 - Update docs and limitations based on real platform behavior.
 
-Status: documented scaffold. The platform release checklist names the Windows
-and iPad validation gates. These platforms remain unvalidated until tested on
-their respective hosts/devices.
+Status: CI validation and release packaging are in place for Windows and
+unsigned iPadOS validation builds. These platforms remain prerelease validation
+targets until tested on their respective hosts/devices with signing and storage
+workflows complete.
 
 Exit criteria:
 

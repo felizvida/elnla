@@ -8,10 +8,46 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  prepare-release:
+    name: Create GitHub Prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create or update prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          title="BenchVault ${TAG}"
+          notes_file="docs/releases/${TAG}.md"
+          if [[ ! -f "$notes_file" ]]; then
+            notes_file="docs/releases/latest.md"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "$title" \
+              --notes-file "$notes_file" \
+              --prerelease
+          else
+            gh release create "$TAG" \
+              --title "$title" \
+              --notes-file "$notes_file" \
+              --prerelease \
+              --verify-tag
+          fi
+
   macos-prerelease:
     name: Build macOS Prerelease
     runs-on: macos-latest
+    needs: prepare-release
     timeout-minutes: 40
 
     steps:
@@ -45,5 +81,83 @@ jobs:
           release_dir="dist/releases/v${version}"
           gh release upload "$TAG" \
             "$release_dir/BenchVault-macOS-v${version}-prerelease.zip" \
-            "$release_dir/SHA256SUMS.txt" \
+            "$release_dir/SHA256SUMS-macOS.txt" \
+            --clobber
+
+  windows-prerelease:
+    name: Build Windows Prerelease
+    runs-on: windows-latest
+    needs: prepare-release
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      - name: Build Windows zip
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          scripts/package_windows_release.ps1 $version
+
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          $releaseDir = "dist/releases/v$version"
+          gh release upload $env:TAG `
+            "$releaseDir/BenchVault-Windows-v$version-prerelease.zip" `
+            "$releaseDir/SHA256SUMS-Windows.txt" `
+            --clobber
+
+  ipados-validation:
+    name: Build iPadOS Unsigned Validation
+    runs-on: macos-latest
+    needs: prepare-release
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build unsigned iPadOS validation zip
+        run: scripts/package_ipados_validation.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          release_dir="dist/releases/v${version}"
+          gh release upload "$TAG" \
+            "$release_dir/BenchVault-iPadOS-v${version}-unsigned-validation.zip" \
+            "$release_dir/SHA256SUMS-iPadOS-validation.txt" \
             --clobber

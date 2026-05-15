@@ -14,7 +14,7 @@ private_path_pattern='/'"private"'/'
 scan_pattern="${home_path_pattern}|${private_path_pattern}|LABARCHIVES_GOV_(LOGIN_ID|ACCESS_KEY)=[A-Za-z0-9_+/=-]{20,}|OPENAI_API_KEY=sk-[A-Za-z0-9_-]+|[A-Za-z0-9._%+-]+@nih\\.gov"
 
 rg -n "$scan_pattern" \
-  .gitignore README.md docs lib scripts test tool pubspec.yaml && {
+  .github .gitignore README.md docs lib scripts test tool pubspec.yaml && {
     echo "Secret or absolute-path scan found a match." >&2
     exit 1
   }

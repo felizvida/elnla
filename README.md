@@ -70,9 +70,10 @@ in the app and in the documentation so backup failures are easier to understand.
 ## Platform Strategy
 
 - macOS is the first target and primary development environment.
-- Windows support is scaffolded through Flutter; build on a Windows host.
-- iPad support is scaffolded through Flutter iOS; build on a Mac with the
-  required Xcode iOS platform components installed.
+- Windows support is scaffolded through Flutter and now has GitHub Actions build
+  and prerelease packaging validation.
+- iPad support is scaffolded through Flutter iOS and now has GitHub Actions
+  no-codesign build validation for Apple signing review.
 - Shared LabArchives, backup, parsing, and verification logic stays in Dart so
   platform-specific code remains small.
 - Visual styling uses an NIH/HHS-aligned palette: federal blue as the primary
@@ -83,9 +84,9 @@ Current status:
 
 | Platform | Status |
 | --- | --- |
-| macOS | Native Flutter `.app` builds and runs. |
-| Windows | Project scaffolded; host build still needed. |
-| iPad | Project scaffolded; Xcode iOS platform setup still needed. |
+| macOS | Native Flutter `.app` builds, runs, and is packaged by the tag release workflow. |
+| Windows | CI builds and packages a prerelease zip on `windows-latest`; real workstation validation and installer signing are still pending. |
+| iPad | CI builds an unsigned no-codesign iPadOS validation app; real device/TestFlight release still requires Apple signing and entitlement review. |
 
 ## Repository Layout
 
@@ -131,7 +132,7 @@ BenchVault is macOS-first and focused on LabArchives GOV backup/offline viewing.
 It is not a LabArchives editor, legal certification system, immutable storage
 system, or background service. Automatic backups currently run only while the
 app is open, readable views simplify some LabArchives formatting, and Windows
-and iPad support still need platform validation. See the
+and iPad support still need real-device/platform validation beyond CI builds. See the
 [implementation limitations](docs/implementation_limitations.md) for the full
 list.
 
@@ -166,15 +167,22 @@ python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-b
 dart run tool/backup_once.dart
 python3 tool/build_quickstart_pdf.py
 scripts/release_smoke_check.sh
-scripts/package_macos_release.sh 1.0.4
+scripts/package_macos_release.sh 1.0.5
+pwsh scripts/package_windows_release.ps1 1.0.5
+scripts/package_ipados_validation.sh 1.0.5
 ```
 
 Release automation:
 
 - `.github/workflows/ci.yml` runs tests, analyzer, safety scans, seeder dry-run,
-  and a macOS build on push and pull request.
-- `.github/workflows/release.yml` runs on `v*` tags, builds the unsigned macOS
-  prerelease zip, and uploads it to the matching GitHub release.
+  macOS build, Windows build, and iPadOS no-codesign build validation on push
+  and pull request.
+- `.github/workflows/release.yml` runs on `v*` tags, creates or updates the
+  GitHub prerelease, then uploads macOS, Windows, and unsigned iPadOS validation
+  assets with platform-specific checksum files.
+- The iPadOS validation zip is a build artifact for signing review. It is not an
+  installable iPad release without Apple Developer signing, provisioning, and
+  distribution through an approved channel.
 
 The synthetic test-notebook seeder is intentionally write-capable and is locked
 behind a double opt-in so it cannot be run accidentally:

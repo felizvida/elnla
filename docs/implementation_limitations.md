@@ -219,13 +219,15 @@ work.
 
 - macOS is the only platform currently built and exercised as the primary
   target.
-- Windows support is scaffolded through Flutter, but host builds, credential
-  permission hardening, extractor availability, file-picker behavior, and
-  installer packaging still need validation on Windows.
-- iPad support is scaffolded through Flutter iOS, but background scheduling,
-  local archive extraction, filesystem access, document picking, and credential
-  storage need platform-specific design and testing before it can be considered
-  supported.
+- Windows support now has GitHub Actions build validation and prerelease zip
+  packaging on `windows-latest`, but credential permission hardening, extractor
+  availability, file-picker behavior, installer packaging, signing, and real
+  workstation testing still need validation on Windows.
+- iPad support now has GitHub Actions no-codesign build validation and an
+  unsigned validation zip, but background scheduling, local archive extraction,
+  Files app access, document picking, credential storage, Apple signing,
+  provisioning, and real-device testing must be completed before it can be
+  considered supported.
 - The app is not currently distributed as a signed, notarized, managed, or
   institutionally packaged installer.
 
@@ -248,7 +250,9 @@ work.
 - The quickstart PDF builder uses Python ReportLab from the available local
   Python environment. The repository does not yet pin a Python virtual
   environment or requirements file for documentation builds.
-- Flutter dependencies are managed by `pubspec.yaml`, but platform packaging,
-  code signing, notarization, and release automation are not complete.
+- Flutter dependencies are managed by `pubspec.yaml`. GitHub release automation
+  packages macOS, Windows, and unsigned iPadOS validation artifacts on `v*`
+  tags, but code signing, notarization, installer packaging, and managed
+  distribution are not complete.
 - The local auth helper and synthetic seeder are scripts for development and
   testing. They are not polished end-user interfaces.

@@ -15,6 +15,10 @@ checks pass:
 - synthetic notebook seeder dry run confirms write lock
 - `flutter build macos`
 - `scripts/package_macos_release.sh <version>`
+- GitHub Actions Windows job passes `flutter build windows`
+- GitHub Actions iPadOS job passes `flutter build ios --release --no-codesign`
+- `scripts/package_windows_release.ps1 <version>` on a Windows host
+- `scripts/package_ipados_validation.sh <version>` on a macOS host
 - demo-mode app launch
 - quickstart PDF regenerated from `docs/user/quickstart.md`
 - GitHub Actions CI passes on `main`
@@ -43,23 +47,38 @@ Required before a public macOS build:
 
 ## Windows
 
-Windows should stay documented as scaffolded until this is performed on a
-Windows host:
+Windows now has CI build validation and prerelease zip packaging on
+`windows-latest`. It should stay documented as a prerelease validation target
+until this checklist is completed on real NIH/NICHD Windows workstations:
 
 - Build with `flutter build windows`.
+- Package with `pwsh scripts/package_windows_release.ps1 <version>`.
+- Confirm the GitHub release includes `BenchVault-Windows-v<version>-prerelease.zip`
+  and `SHA256SUMS-Windows.txt`.
 - Confirm folder picker paths, path separators, and relative backup paths.
 - Confirm archive extraction finds `7z`, `tar`, or another supported extractor.
 - Confirm local credential files are written with appropriate user-only
   permissions or replaced with Windows Credential Manager integration.
 - Confirm scheduled backup behavior while the app is open.
 - Confirm attachment restore and audit export work with Windows paths.
+- Add installer packaging, Authenticode signing, and endpoint/security review
+  before broad Windows distribution.
 
 ## iPad
 
-iPad should stay documented as scaffolded until this is performed on a real iPad
-or simulator with Files access:
+iPadOS now has a no-codesign CI validation build. The GitHub release uploads an
+unsigned validation zip for signing review only; it is not an installable iPad
+release. iPad should stay documented as a prerelease validation target until
+this is performed on a real iPad or simulator with Files access:
 
 - Build and launch the Flutter iOS target.
+- Package the unsigned validation bundle with
+  `scripts/package_ipados_validation.sh <version>`.
+- If the build reports no eligible iOS destination, install the required iOS
+  platform/runtime in Xcode Settings > Components and rerun the validation.
+- Confirm the GitHub release includes
+  `BenchVault-iPadOS-v<version>-unsigned-validation.zip` and
+  `SHA256SUMS-iPadOS-validation.txt`.
 - Confirm local file access through the Files app works for user-selected backup
   folders.
 - Confirm archive extraction is feasible within iPad storage and sandbox limits.
@@ -67,6 +86,9 @@ or simulator with Files access:
 - Confirm background scheduling limits are accurately reflected in the UI and
   docs.
 - Confirm large notebook rendering and search remain responsive.
+- Add Apple Developer signing, provisioning profile management, entitlement
+  review, and TestFlight or managed-app distribution before calling this an iPad
+  release.
 
 ## Secure Storage Direction
 

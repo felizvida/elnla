@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  test:
-    name: Test And Safety Gates
+  macos-test-safety:
+    name: macOS Test And Safety Gates
     runs-on: macos-latest
     timeout-minutes: 30
 
@@ -42,7 +46,7 @@ jobs:
           home_path_pattern='/'"Users"'/'
           private_path_pattern='/'"private"'/'
           scan_pattern="${home_path_pattern}|${private_path_pattern}|LABARCHIVES_GOV_(LOGIN_ID|ACCESS_KEY)=[A-Za-z0-9_+/=-]{20,}|OPENAI_API_KEY=sk-[A-Za-z0-9_-]+|[A-Za-z0-9._%+-]+@nih\\.gov"
-          ! rg -n "$scan_pattern" .gitignore README.md docs lib scripts test tool pubspec.yaml
+          ! rg -n "$scan_pattern" .github .gitignore README.md docs lib scripts test tool pubspec.yaml
           if [[ -f docs/user/BenchVault_Quickstart.pdf ]]; then
             ! strings docs/user/BenchVault_Quickstart.pdf | rg -n "$scan_pattern"
           fi
@@ -52,3 +56,51 @@ jobs:
 
       - name: macOS build
         run: flutter build macos
+
+  windows-build:
+    name: Windows Build Validation
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Windows build
+        run: flutter build windows
+
+  ipados-build:
+    name: iPadOS No-Codesign Build Validation
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: iPadOS build without signing
+        run: flutter build ios --release --no-codesign

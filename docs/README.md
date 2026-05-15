@@ -23,13 +23,13 @@ ignored folders.
   tamper-evidence, backup correctness checks, read-only LabArchives guardrails,
   and operational safeguards.
 - `platform_release_checklist.md`: macOS release gate plus Windows and iPad
-  validation checklist.
+  validation checklist, including CI packaging and signing limits.
 - `developer/labarchives_gov_api_reference.md`: compact implementation
   reference distilled from the LabArchives GOV API notebook PDF.
 - `developer/reference_project_lessons.md`: local-only reference project lessons
   and the BenchVault guardrails for borrowing those ideas.
 - `releases/`: tracked release notes used for GitHub release entries.
-  Latest local notes: `releases/v1.0.4.md`.
+  Latest local notes: `releases/v1.0.5.md`.
 - Backup reader/search sidecars are generated locally under each backup run in
   `readable/`; they are not tracked repository documents.
 
