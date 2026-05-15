@@ -1,4 +1,4 @@
-# ELNLA Documentation
+# BenchVault Documentation
 
 This folder holds the tracked project documentation and public visual assets.
 Everything here uses project-relative paths. Local-only source PDFs,
@@ -7,7 +7,7 @@ ignored folders.
 
 ## User Documents
 
-- `user/ELNLA_Quickstart.pdf`: printable quickstart for notebook owners and
+- `user/BenchVault_Quickstart.pdf`: printable quickstart for notebook owners and
   records staff.
 - `user/quickstart.md`: source for the quickstart PDF.
 
@@ -20,7 +20,7 @@ ignored folders.
 
 ## Assets
 
-- `assets/elnla-banner.svg`: project banner for the README and GitHub preview
+- `assets/benchvault-banner.svg`: project banner for the README and GitHub preview
   contexts that render repository images.
 - `assets/screenshots/`: demo-mode app screenshots used by the README and
   quickstart, including the AI notebook search surface.

@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:elnla/src/backup_parser.dart';
+import 'package:benchvault/src/backup_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('parses LabArchives JSON backup tables into render nodes', () async {
-    final dir = await Directory.systemTemp.createTemp('elnla_parser_test_');
+    final dir = await Directory.systemTemp.createTemp(
+      'benchvault_parser_test_',
+    );
     addTearDown(() => dir.delete(recursive: true));
     await Directory('${dir.path}/notebook').create(recursive: true);
     await File('${dir.path}/notebook.json').writeAsString(

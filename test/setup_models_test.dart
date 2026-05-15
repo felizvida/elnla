@@ -1,4 +1,4 @@
-import 'package:elnla/src/setup_models.dart';
+import 'package:benchvault/src/setup_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

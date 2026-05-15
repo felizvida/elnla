@@ -63,7 +63,7 @@ def authenticated_get(
         "sig": sig,
     }
     url = f"{BASE_URL}/api/{api_class}/{method}?{parse.urlencode(query)}"
-    req = request.Request(url, headers={"User-Agent": "elnla-local-auth/0.1"})
+    req = request.Request(url, headers={"User-Agent": "benchvault-local-auth/0.1"})
     context = ssl.create_default_context()
     with request.urlopen(req, timeout=30, context=context) as response:
         return response.read()

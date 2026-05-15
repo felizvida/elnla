@@ -1,13 +1,15 @@
 import 'dart:io';
 
-import 'package:elnla/src/backup_models.dart';
-import 'package:elnla/src/backup_service.dart';
+import 'package:benchvault/src/backup_models.dart';
+import 'package:benchvault/src/backup_service.dart';
 
 Future<void> main(List<String> args) async {
   final count = _countArg(args);
   final destination = args.length > 1
       ? Directory(args[1])
-      : await Directory.systemTemp.createTemp('elnla_restored_attachments_');
+      : await Directory.systemTemp.createTemp(
+          'benchvault_restored_attachments_',
+        );
   final service = BackupService();
   final backups = await service.loadBackups();
   if (backups.isEmpty) {

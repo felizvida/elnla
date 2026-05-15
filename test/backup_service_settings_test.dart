@@ -1,16 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:elnla/src/backup_models.dart';
-import 'package:elnla/src/backup_service.dart';
-import 'package:elnla/src/notebook_search_service.dart';
-import 'package:elnla/src/search_models.dart';
-import 'package:elnla/src/setup_models.dart';
+import 'package:benchvault/src/backup_models.dart';
+import 'package:benchvault/src/backup_service.dart';
+import 'package:benchvault/src/notebook_search_service.dart';
+import 'package:benchvault/src/search_models.dart';
+import 'package:benchvault/src/setup_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('backup settings persist schedule and selected backup root', () async {
-    final root = await Directory.systemTemp.createTemp('elnla_settings_test_');
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_settings_test_',
+    );
     addTearDown(() => root.delete(recursive: true));
 
     final service = BackupService(root: root);
@@ -38,7 +40,9 @@ void main() {
   test(
     'restoreAttachment copies backed-up original without overwriting',
     () async {
-      final root = await Directory.systemTemp.createTemp('elnla_restore_test_');
+      final root = await Directory.systemTemp.createTemp(
+        'benchvault_restore_test_',
+      );
       addTearDown(() => root.delete(recursive: true));
 
       final service = BackupService(root: root);
@@ -90,7 +94,9 @@ void main() {
   );
 
   test('loadAttachmentTextPreview reads safe bounded text only', () async {
-    final root = await Directory.systemTemp.createTemp('elnla_preview_test_');
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_preview_test_',
+    );
     addTearDown(() => root.delete(recursive: true));
 
     final service = BackupService(root: root);
@@ -145,7 +151,9 @@ void main() {
   });
 
   test('OpenAI search settings stay in local credentials', () async {
-    final root = await Directory.systemTemp.createTemp('elnla_openai_test_');
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_openai_test_',
+    );
     addTearDown(() => root.delete(recursive: true));
 
     final service = BackupService(root: root);
@@ -171,7 +179,9 @@ void main() {
   });
 
   test('readable copy and local search are generated from render JSON', () async {
-    final root = await Directory.systemTemp.createTemp('elnla_readable_test_');
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_readable_test_',
+    );
     addTearDown(() => root.delete(recursive: true));
 
     final service = BackupService(root: root);
@@ -276,7 +286,9 @@ void main() {
   });
 
   test('integrity seal detects byte-level backup changes', () async {
-    final root = await Directory.systemTemp.createTemp('elnla_integrity_test_');
+    final root = await Directory.systemTemp.createTemp(
+      'benchvault_integrity_test_',
+    );
     addTearDown(() => root.delete(recursive: true));
 
     final service = BackupService(root: root);

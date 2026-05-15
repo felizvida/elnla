@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:elnla/src/backup_service.dart';
+import 'package:benchvault/src/backup_service.dart';
 
 Future<void> main() async {
   final service = BackupService();

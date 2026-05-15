@@ -35,7 +35,7 @@ class LabArchivesClient {
       params: {'uid': userId, 'nbid': notebook.nbid, 'json': 'true'},
     );
     final request = await _httpClient.getUrl(uri);
-    request.headers.set(HttpHeaders.userAgentHeader, 'elnla-backup/0.1');
+    request.headers.set(HttpHeaders.userAgentHeader, 'benchvault-backup/0.1');
     final response = await request.close();
     if (response.statusCode != HttpStatus.ok) {
       final body = await utf8.decodeStream(response);
@@ -59,7 +59,7 @@ class LabArchivesClient {
       params: {'login_or_email': email, 'password': authCode},
     );
     final request = await _httpClient.getUrl(uri);
-    request.headers.set(HttpHeaders.userAgentHeader, 'elnla-setup/0.1');
+    request.headers.set(HttpHeaders.userAgentHeader, 'benchvault-setup/0.1');
     final response = await request.close();
     final body = await utf8.decodeStream(response);
     if (response.statusCode != HttpStatus.ok) {

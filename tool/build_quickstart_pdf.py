@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the ELNLA quickstart PDF from docs/user/quickstart.md."""
+"""Build the BenchVault quickstart PDF from docs/user/quickstart.md."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from reportlab.platypus import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/user/quickstart.md"
-OUTPUT = ROOT / "docs/user/ELNLA_Quickstart.pdf"
+OUTPUT = ROOT / "docs/user/BenchVault_Quickstart.pdf"
 
 
 def styles() -> dict[str, ParagraphStyle]:
@@ -242,7 +242,7 @@ def draw_page(canvas, _doc) -> None:
     canvas.rect(0, letter[1] - 0.38 * inch, letter[0], 0.38 * inch, fill=1)
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(0.55 * inch, letter[1] - 0.25 * inch, "ELNLA Quickstart")
+    canvas.drawString(0.55 * inch, letter[1] - 0.25 * inch, "BenchVault Quickstart")
     canvas.setFillColor(colors.HexColor("#60717d"))
     canvas.setFont("Helvetica", 8)
     canvas.drawRightString(letter[0] - 0.55 * inch, 0.35 * inch, str(canvas.getPageNumber()))
@@ -257,7 +257,7 @@ def main() -> None:
         leftMargin=0.55 * inch,
         topMargin=0.65 * inch,
         bottomMargin=0.55 * inch,
-        title="ELNLA Quickstart",
+        title="BenchVault Quickstart",
     )
     document.build(build_story(), onFirstPage=draw_page, onLaterPages=draw_page)
     print(OUTPUT.relative_to(ROOT))

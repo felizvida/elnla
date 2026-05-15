@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "elnla" "\0"
+            VALUE "CompanyName", "Feliz Vida" "\0"
+            VALUE "FileDescription", "BenchVault" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "elnla" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "elnla.exe" "\0"
-            VALUE "ProductName", "elnla" "\0"
+            VALUE "InternalName", "benchvault" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Feliz Vida. All rights reserved." "\0"
+            VALUE "OriginalFilename", "benchvault.exe" "\0"
+            VALUE "ProductName", "BenchVault" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

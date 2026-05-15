@@ -1,23 +1,23 @@
 ---
-title: "ELNLA Quickstart"
+title: "BenchVault Quickstart"
 subtitle: "Back up LabArchives GOV notebooks and read them offline"
-author: "ELNLA"
-date: "May 14, 2026"
+author: "BenchVault"
+date: "May 15, 2026"
 geometry: margin=0.75in
 fontsize: 11pt
 colorlinks: true
 ---
 
-# ELNLA Quickstart
+# BenchVault Quickstart
 
-ELNLA is a desktop app for backing up LabArchives GOV electronic lab notebooks
+BenchVault is a desktop app for backing up LabArchives GOV electronic lab notebooks
 and reading those backups later in a read-only viewer. It is designed for lab
 records, experiment notes, protocols, tables, images, PDFs, sequence files,
 instrument output, and other bench-research attachments.
 
-![ELNLA read-only viewer](../assets/screenshots/elnla-viewer.png){width=95%}
+![BenchVault read-only viewer](../assets/screenshots/benchvault-viewer.png){width=95%}
 
-## What ELNLA Does
+## What BenchVault Does
 
 - Backs up every notebook that your LabArchives account is allowed to back up.
 - Keeps the original LabArchives archive file for preservation.
@@ -41,23 +41,23 @@ You need:
 
 At NIH and NICHD, lab notebook ownership is restricted to lab chiefs, also known
 as PIs. The LabArchives full-size notebook backup API is owner-only. If you can
-see a notebook but you are not the PI owner, ELNLA can list it but cannot
+see a notebook but you are not the PI owner, BenchVault can list it but cannot
 download its full-size backup archive.
 
 Choose a backup folder that is easy to protect and easy to find. A good pattern
-is to create a dedicated folder named `ELNLA_Backups` in a secure local or
+is to create a dedicated folder named `BenchVault_Backups` in a secure local or
 approved institutional storage location.
 
 ## First Launch Setup
 
-1. Open ELNLA.
+1. Open BenchVault.
 2. Enter your LabArchives email address.
 3. Enter your access ID and access key.
 4. Choose the folder where routine backup copies should be stored.
 5. Enter an OpenAI API key if you want natural-language notebook search.
 6. Click `Connect`.
 7. Complete the LabArchives authorization step in the browser.
-8. Return to ELNLA after authorization is captured.
+8. Return to BenchVault after authorization is captured.
 
 If browser authorization does not complete cleanly, paste the LabArchives auth
 code into the setup screen and click `Use Auth Code`.
@@ -71,14 +71,14 @@ code into the setup screen and click `Use Auth Code`.
 5. Browse pages in the notebook tree.
 6. Select a page to read its backed-up contents.
 
-ELNLA may skip notebooks that are visible to you but not eligible for API backup
+BenchVault may skip notebooks that are visible to you but not eligible for API backup
 with your current permissions. This does not mean the backup system failed. It
 means LabArchives did not grant backup rights for that notebook. At NIH/NICHD,
 ask the lab chief or PI owner to run the backup for that notebook.
 
 ## Confirm Full-Size Originals
 
-For each successful notebook backup, ELNLA verifies the original attachment
+For each successful notebook backup, BenchVault verifies the original attachment
 payloads. A successful backup means:
 
 - The LabArchives `.7z` archive was saved.
@@ -90,15 +90,15 @@ payloads. A successful backup means:
 The manifest is named `original_files_manifest.json`. It includes relative file
 paths, expected byte counts, actual byte counts, and SHA-256 checksums.
 
-ELNLA also writes `integrity_manifest.json` for the whole backup run and records
+BenchVault also writes `integrity_manifest.json` for the whole backup run and records
 a local seal in the ignored credentials folder. When you open a backup later,
 the viewer re-checks protected files. If a file was changed, removed, or added,
-ELNLA shows a warning before you rely on that copy. This is tamper-evidence for
+BenchVault shows a warning before you rely on that copy. This is tamper-evidence for
 local preservation; it is not a legal certification by itself.
 
 ## Supported Attachments
 
-LabArchives can attach documents of any file type and format. ELNLA therefore
+LabArchives can attach documents of any file type and format. BenchVault therefore
 preserves and restores every original payload it finds in a full-size backup,
 even when no inline preview is available.
 
@@ -113,7 +113,7 @@ The read-only viewer recognizes the same major LabArchives attachment families:
 - Chemical structure files such as CDX, CDXML, MOL, SDF, and SKC.
 - Media files, archives, and other custom instrument exports.
 
-ELNLA previews safe local formats inline, including common images, text-like
+BenchVault previews safe local formats inline, including common images, text-like
 files, sequence text, chemical text files, and a Jupyter notebook summary.
 Tool-specific formats such as Office files, PDFs, TIFF images, SnapGene files,
 binary chemical drawings, media, and custom instrument exports are still
@@ -123,13 +123,13 @@ the viewer does not run embedded scripts.
 
 ## Search Backed-Up Notebooks
 
-![Natural-language notebook search](../assets/screenshots/elnla-ai-search.png){width=80%}
+![Natural-language notebook search](../assets/screenshots/benchvault-ai-search.png){width=80%}
 
 Use the search field above the notebook viewer to ask about backed-up content.
-ELNLA always creates a local readable copy first, then searches that copy.
+BenchVault always creates a local readable copy first, then searches that copy.
 
 Without an OpenAI API key, or if the OpenAI request fails, search uses local
-fuzzy matching and shows the best matching pages. With an OpenAI API key, ELNLA
+fuzzy matching and shows the best matching pages. With an OpenAI API key, BenchVault
 sends the best matching excerpts to OpenAI and returns a concise answer with
 page citations. The OpenAI key is stored locally in the ignored credentials
 folder.
@@ -143,7 +143,7 @@ Useful searches include:
 
 ## Set Automatic Backups
 
-![Automatic backup schedule](../assets/screenshots/elnla-schedule.png){width=80%}
+![Automatic backup schedule](../assets/screenshots/benchvault-schedule.png){width=80%}
 
 1. Click the schedule button in the toolbar.
 2. Turn `Enabled` on.
@@ -152,13 +152,13 @@ Useful searches include:
 5. Confirm the backup folder.
 6. Click `Save`.
 
-Scheduled backups run while ELNLA is open. If the app is closed, a scheduled
+Scheduled backups run while BenchVault is open. If the app is closed, a scheduled
 backup will not run until app-level background scheduling is added for your
 platform.
 
 ## Backup Folder Structure
 
-ELNLA organizes routine copies inside the folder you choose:
+BenchVault organizes routine copies inside the folder you choose:
 
 ```text
 notebooks/
@@ -223,7 +223,7 @@ Use the viewer to:
 grant API backup rights for it. At NIH/NICHD, full-size backup is owner-only,
 and the notebook owner should be the lab chief or PI.
 
-`Original attachment verification failed`: ELNLA did not find every full-size
+`Original attachment verification failed`: BenchVault did not find every full-size
 original attachment or the byte sizes did not match. Run backup again. If it
 still fails, keep the failed run for review and contact the project maintainer.
 

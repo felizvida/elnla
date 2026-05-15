@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="420" viewBox="0 0 1400 420" role="img" aria-labelledby="title desc">
-  <title id="title">ELNLA project banner</title>
-  <desc id="desc">A clean scientific banner for ELNLA, a LabArchives GOV backup and read-only notebook viewer.</desc>
+  <title id="title">BenchVault project banner</title>
+  <desc id="desc">A clean scientific banner for BenchVault, a LabArchives GOV backup and read-only notebook viewer.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#162e51"/>
@@ -17,7 +17,7 @@
   <path d="M0 355 C180 310 352 368 548 320 C720 278 852 272 1028 300 C1172 323 1292 285 1400 245 L1400 420 L0 420 Z" fill="#ccecf2" opacity="0.75"/>
 
   <g transform="translate(92 78)">
-    <text x="0" y="0" fill="#ffffff" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="0">ELNLA</text>
+    <text x="0" y="0" fill="#ffffff" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="0">BenchVault</text>
     <text x="4" y="55" fill="#ccecf2" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="600">LabArchives GOV backup and read-only notebook viewer</text>
     <text x="4" y="112" fill="#f8fffc" font-family="Avenir Next, Inter, Segoe UI, Arial, sans-serif" font-size="23" font-weight="500">Owner-only full-size archives • Original attachment verification • Lab-ready offline review</text>
   </g>

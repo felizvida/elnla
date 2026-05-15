@@ -12,14 +12,14 @@ class AttachmentFormatSupport {
   const AttachmentFormatSupport({
     required this.family,
     required this.labArchivesSupport,
-    required this.elnlaSupport,
+    required this.benchvaultSupport,
     required this.previewMode,
     this.labArchivesDirectView = false,
   });
 
   final String family;
   final String labArchivesSupport;
-  final String elnlaSupport;
+  final String benchvaultSupport;
   final AttachmentPreviewMode previewMode;
   final bool labArchivesDirectView;
 
@@ -42,8 +42,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Browser image',
       labArchivesSupport:
           'LabArchives can directly view common browser images and annotate JPG, PNG, and GIF images.',
-      elnlaSupport:
-          'ELNLA previews this image inline and restores the original file.',
+      benchvaultSupport:
+          'BenchVault previews this image inline and restores the original file.',
       previewMode: AttachmentPreviewMode.inlineImage,
       labArchivesDirectView: true,
     );
@@ -53,8 +53,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'TIFF image',
       labArchivesSupport:
           'LabArchives stores TIFF files, but its Image Annotator notes that TIFF is not browser-native.',
-      elnlaSupport:
-          'ELNLA preserves and restores the original TIFF; open it in an image-analysis tool for viewing.',
+      benchvaultSupport:
+          'BenchVault preserves and restores the original TIFF; open it in an image-analysis tool for viewing.',
       previewMode: AttachmentPreviewMode.externalViewer,
     );
   }
@@ -62,8 +62,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
     return const AttachmentFormatSupport(
       family: 'PDF document',
       labArchivesSupport: 'LabArchives can directly view PDF attachments.',
-      elnlaSupport:
-          'ELNLA recognizes the PDF, preserves the original, and restores it for local viewing.',
+      benchvaultSupport:
+          'BenchVault recognizes the PDF, preserves the original, and restores it for local viewing.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -73,8 +73,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Microsoft Office document',
       labArchivesSupport:
           'LabArchives can view Word, Excel, and PowerPoint files through Office for the Web; newer formats can be edited when enabled.',
-      elnlaSupport:
-          'ELNLA recognizes Office files, preserves the original, and restores it for local Office-compatible viewing.',
+      benchvaultSupport:
+          'BenchVault recognizes Office files, preserves the original, and restores it for local Office-compatible viewing.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -84,8 +84,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Jupyter notebook',
       labArchivesSupport:
           'LabArchives can view Jupyter notebooks in its Docs Viewer.',
-      elnlaSupport:
-          'ELNLA summarizes notebook cells inline and restores the original .ipynb file.',
+      benchvaultSupport:
+          'BenchVault summarizes notebook cells inline and restores the original .ipynb file.',
       previewMode: AttachmentPreviewMode.jupyterSummary,
       labArchivesDirectView: true,
     );
@@ -98,8 +98,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Text or tabular file',
       labArchivesSupport:
           'LabArchives can directly view and index supported text files under the attachment size threshold.',
-      elnlaSupport:
-          'ELNLA previews the text inline and restores the original file.',
+      benchvaultSupport:
+          'BenchVault previews the text inline and restores the original file.',
       previewMode: AttachmentPreviewMode.inlineText,
       labArchivesDirectView: true,
     );
@@ -109,8 +109,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Molecular sequence text',
       labArchivesSupport:
           'LabArchives SnapGene/Geneious integrations support common sequence formats such as FASTA, GenBank, and EMBL.',
-      elnlaSupport:
-          'ELNLA previews text-based sequence content inline and restores the original file.',
+      benchvaultSupport:
+          'BenchVault previews text-based sequence content inline and restores the original file.',
       previewMode: AttachmentPreviewMode.inlineText,
       labArchivesDirectView: true,
     );
@@ -120,8 +120,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Molecular biology project file',
       labArchivesSupport:
           'LabArchives SnapGene/Geneious integrations support this sequence-project family and may show a sequence preview.',
-      elnlaSupport:
-          'ELNLA recognizes the format and restores the original file for SnapGene, Geneious, or compatible tools.',
+      benchvaultSupport:
+          'BenchVault recognizes the format and restores the original file for SnapGene, Geneious, or compatible tools.',
       previewMode: AttachmentPreviewMode.externalViewer,
       labArchivesDirectView: true,
     );
@@ -131,9 +131,9 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Chemical structure file',
       labArchivesSupport:
           'LabArchives Inventory accepts chemical file formats including CDX, CDXML, MOL, SDF, and SKC.',
-      elnlaSupport: _chemicalTextExtensions.contains(extension)
-          ? 'ELNLA previews this text-based chemical file inline and restores the original file.'
-          : 'ELNLA recognizes the format and restores the original file for a chemical drawing or structure tool.',
+      benchvaultSupport: _chemicalTextExtensions.contains(extension)
+          ? 'BenchVault previews this text-based chemical file inline and restores the original file.'
+          : 'BenchVault recognizes the format and restores the original file for a chemical drawing or structure tool.',
       previewMode: _chemicalTextExtensions.contains(extension)
           ? AttachmentPreviewMode.inlineText
           : AttachmentPreviewMode.externalViewer,
@@ -147,8 +147,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Media file',
       labArchivesSupport:
           'LabArchives can store media attachments and commonly shows recognized media with viewer or file-type controls.',
-      elnlaSupport:
-          'ELNLA preserves and restores the original media file for local playback.',
+      benchvaultSupport:
+          'BenchVault preserves and restores the original media file for local playback.',
       previewMode: AttachmentPreviewMode.externalViewer,
     );
   }
@@ -157,8 +157,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
       family: 'Archive or package',
       labArchivesSupport:
           'LabArchives stores arbitrary attachment formats, including packages and archives.',
-      elnlaSupport:
-          'ELNLA preserves and restores the original archive without unpacking it in the read-only viewer.',
+      benchvaultSupport:
+          'BenchVault preserves and restores the original archive without unpacking it in the read-only viewer.',
       previewMode: AttachmentPreviewMode.downloadOnly,
     );
   }
@@ -166,8 +166,8 @@ AttachmentFormatSupport attachmentFormatSupport(RenderPart part) {
     family: 'Generic attachment',
     labArchivesSupport:
         'LabArchives allows documents of any file type and format to be attached to a notebook page.',
-    elnlaSupport:
-        'ELNLA preserves the original payload and restores it even when no inline preview is available.',
+    benchvaultSupport:
+        'BenchVault preserves the original payload and restores it even when no inline preview is available.',
     previewMode: AttachmentPreviewMode.downloadOnly,
   );
 }

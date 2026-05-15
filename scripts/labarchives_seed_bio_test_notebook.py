@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create and populate a dedicated LabArchives notebook for ELNLA testing.
+"""Create and populate a dedicated LabArchives notebook for BenchVault testing.
 
 The script reads credentials and UID from local_credentials/, creates a new
 notebook when needed, adds folders/pages, writes text/rich-text content,
@@ -51,8 +51,8 @@ NICHD_MISSION_NOTE = (
 SYNTHETIC_PROJECT_ID = "NICHD-SYN-DEVSTRESS-2026"
 SYNTHETIC_PROTOCOL_ID = "SYN-IACUC-DEV-0001 / SYN-IBC-CHEM-0007"
 SYNTHETIC_PI = "Synthetic Lab Chief"
-SYNTHETIC_OPERATOR = "ELNLA Seed Operator"
-ANALYSIS_VERSION = "elnla-fixture-analysis-v2.0.0"
+SYNTHETIC_OPERATOR = "BenchVault Seed Operator"
+ANALYSIS_VERSION = "benchvault-fixture-analysis-v2.0.0"
 SAMPLE_MATERIALS = [
     ("ZF-EMB-042", "zebrafish embryo", "24 hpf developmental morphology", "light-sheet"),
     ("ZF-LAR-117", "zebrafish larva", "5 dpf locomotor recovery", "behavior tracking"),
@@ -83,7 +83,7 @@ PROGRAM_TIMELINE = [
     ("2011", "mouse genetics and neonatal phenotyping became the in vivo anchor"),
     ("2017", "high-throughput sequencing and cloud-adjacent analysis matured"),
     ("2021", "chemical biology and biophysical binding assays joined the pipeline"),
-    ("2026", "ELNLA backup verification storyline notebook created for preservation testing"),
+    ("2026", "BenchVault backup verification storyline notebook created for preservation testing"),
 ]
 
 
@@ -138,7 +138,7 @@ def api_get(api_class: str, method: str, params: Dict[str, str]) -> bytes:
         "sig": sign(creds["LABARCHIVES_GOV_LOGIN_ID"], creds["LABARCHIVES_GOV_ACCESS_KEY"], method, expires_ms),
     }
     url = f"{BASE_URL}/api/{api_class}/{method}?{parse.urlencode(query)}"
-    req = request.Request(url, headers={"User-Agent": "elnla-seed/0.1"})
+    req = request.Request(url, headers={"User-Agent": "benchvault-seed/0.1"})
     return read_response(req, timeout=60)
 
 
@@ -156,7 +156,7 @@ def api_post_form(api_class: str, method: str, query_params: Dict[str, str], for
         url,
         data=parse.urlencode(form).encode("utf-8"),
         headers={
-            "User-Agent": "elnla-seed/0.1",
+            "User-Agent": "benchvault-seed/0.1",
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
@@ -177,7 +177,7 @@ def api_post_bytes(api_class: str, method: str, query_params: Dict[str, str], pa
         url,
         data=payload,
         headers={
-            "User-Agent": "elnla-seed/0.1",
+            "User-Agent": "benchvault-seed/0.1",
             "Content-Type": "application/octet-stream",
         },
     )
@@ -195,7 +195,7 @@ def xml_text(xml: bytes, *paths: str) -> str:
 
 def create_notebook(uid: str) -> Tuple[str, str]:
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    name = f"ELNLA Integration Test {stamp}"
+    name = f"BenchVault Integration Test {stamp}"
     xml = api_get(
         "notebooks",
         "create_notebook",
@@ -203,7 +203,7 @@ def create_notebook(uid: str) -> Tuple[str, str]:
             "uid": uid,
             "name": name,
             "initial_folders": "Empty",
-            "site_notebook_id": "ELNLA-INTEGRATION-TEST",
+            "site_notebook_id": "BenchVault-INTEGRATION-TEST",
         },
     )
     response_path = LOCAL / "create_integration_notebook_response.xml"
@@ -309,29 +309,29 @@ def write_fixture_files(target: Path) -> Iterable[Tuple[Path, str]]:
     fixtures: Dict[str, str | bytes] = {
         "qpcr_results.csv": "sample,target,ct,tm\nA01,ACTB,18.4,82.1\nA02,GAPDH,19.1,81.7\nB01,IL6,31.2,79.4\n",
         "sample_manifest.tsv": "sample_id\torganism\ttissue\ttreatment\nS001\tHomo sapiens\tPBMC\tcontrol\nS002\tHomo sapiens\tPBMC\tLPS 4h\nS003\tDanio rerio\tlarva\thypoxia rescue\nS004\tMus musculus\tplacenta\tinterferon stress\n",
-        "amplicon.fasta": ">ELNLA_amplicon_IFIT1\nATGGATGATGATATCGCCGCGCTCGTCGTCGACAACGGCTCCGGCATGTGCAAGGCCGGCTTCGCG\n",
+        "amplicon.fasta": ">BenchVault_amplicon_IFIT1\nATGGATGATGATATCGCCGCGCTCGTCGTCGACAACGGCTCCGGCATGTGCAAGGCCGGCTTCGCG\n",
         "variant_panel.vcf": "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr10\t910221\tIFIT1_SYN_PROMOTER\tG\tA\t99\tPASS\tGENE=IFIT1;FIXTURE=SYNTHETIC\nchr6\t3154421\tHIF1A_SYN_TAG\tC\tT\t80\tPASS\tGENE=HIF1A;FIXTURE=SYNTHETIC\n",
         "targets.bed": "chr10\t910180\t910260\tIFIT1_promoter_amplicon\nchr6\t3154380\t3154480\tHIF1A_tag_amplicon\n",
-        "plasmid.gb": "LOCUS       ELNLA_TEST       120 bp    DNA     circular SYN 14-MAY-2026\nFEATURES             Location/Qualifiers\n     promoter        1..30\n     CDS             31..90\nORIGIN\n        1 atggccattg taatgggccg ctgaaagggt gcccgacgaa cgttactgac gactgacgac\n//\n",
+        "plasmid.gb": "LOCUS       BenchVault_TEST       120 bp    DNA     circular SYN 14-MAY-2026\nFEATURES             Location/Qualifiers\n     promoter        1..30\n     CDS             31..90\nORIGIN\n        1 atggccattg taatgggccg ctgaaagggt gcccgacgaa cgttactgac gactgacgac\n//\n",
         "assay_metadata.json": json.dumps(
             {
-                "project": "ELNLA integration test",
+                "project": "BenchVault integration test",
                 "assay": "qPCR + sequencing handoff",
                 "biosafety_level": "BSL-2",
                 "controls": ["NTC", "positive control", "extraction blank"],
             },
             indent=2,
         ),
-        "instrument_run.xml": "<run><instrument>QuantStudio</instrument><operator>ELNLA</operator><plates>1</plates></run>\n",
+        "instrument_run.xml": "<run><instrument>QuantStudio</instrument><operator>BenchVault</operator><plates>1</plates></run>\n",
         "western_blot_notes.md": "# Western blot notes\n\n- Primary antibody: anti-ACTB\n- Blocking: 5% milk\n- Exposure: 30 s\n",
-        "analysis_report.html": "<html><body><h1>ELNLA QC Report</h1><table><tr><th>Metric</th><th>Status</th></tr><tr><td>qPCR controls</td><td>Pass</td></tr></table></body></html>\n",
+        "analysis_report.html": "<html><body><h1>BenchVault QC Report</h1><table><tr><th>Metric</th><th>Status</th></tr><tr><td>qPCR controls</td><td>Pass</td></tr></table></body></html>\n",
         "notebook_payload.ipynb": json.dumps(
             {
                 "cells": [
                     {
                         "cell_type": "markdown",
                         "metadata": {},
-                        "source": ["# ELNLA test analysis\n", "Compute delta Ct."],
+                        "source": ["# BenchVault test analysis\n", "Compute delta Ct."],
                     }
                 ],
                 "metadata": {},
@@ -351,7 +351,7 @@ def write_fixture_files(target: Path) -> Iterable[Tuple[Path, str]]:
             """
         ).strip()
         + "\n",
-        "qc_report.pdf": minimal_pdf("ELNLA integration QC report"),
+        "qc_report.pdf": minimal_pdf("BenchVault integration QC report"),
         "tiny_signal.png": base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         ),
@@ -408,7 +408,7 @@ def minimal_pdf(text: str) -> bytes:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Populate the local ELNLA LabArchives integration notebook with a NICHD-style model-systems lab storyline."
+        description="Populate the local BenchVault LabArchives integration notebook with a NICHD-style model-systems lab storyline."
     )
     parser.add_argument(
         "--fresh",
@@ -419,7 +419,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_existing_integration_notebook() -> Tuple[str, str] | None:
-    output = LOCAL / "elnla_integration_notebook.tsv"
+    output = LOCAL / "benchvault_integration_notebook.tsv"
     if not output.exists():
         return None
     with output.open("r", encoding="utf-8", newline="") as handle:
@@ -441,7 +441,7 @@ def notebook_choice(uid: str, fresh: bool) -> Tuple[str, str]:
         reusable = [
             (name, nbid)
             for name, nbid, _ in refresh_notebooks(uid)
-            if name.startswith("ELNLA Integration Test")
+            if name.startswith("BenchVault Integration Test")
         ]
         if reusable:
             reusable.sort(reverse=True)
@@ -692,16 +692,16 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         "sequencing_demultiplex_summary.csv": "\n".join(demux_rows) + "\n",
         "flow_compensation_matrix.csv": "\n".join(compensation_rows) + "\n",
         "western_blot_densitometry.csv": "lane,target,background_corrected_intensity,normalized_to_actb\n1,STAT1,18333,0.91\n2,pSTAT1,24119,1.38\n3,ACTB,19811,1.00\n",
-        "illumina_sample_sheet.csv": "[Header],,,,,\nIEMFileVersion,5,,,,\n[Data],,,,,\nSample_ID,Sample_Name,index,index2,Description,Project\nS001,PBMC_control,ATCACG,CGATGT,control,ELNLA\nS002,PBMC_LPS4h,CGATGT,TGACCA,treated,ELNLA\nS003,ZF_larva_hypoxia,TTAGGC,ACAGTG,zebrafish,ELNLA\nS004,Mouse_placenta_rescue,TGACCA,GCCAAT,mouse_placenta,ELNLA\n",
+        "illumina_sample_sheet.csv": "[Header],,,,,\nIEMFileVersion,5,,,,\n[Data],,,,,\nSample_ID,Sample_Name,index,index2,Description,Project\nS001,PBMC_control,ATCACG,CGATGT,control,BenchVault\nS002,PBMC_LPS4h,CGATGT,TGACCA,treated,BenchVault\nS003,ZF_larva_hypoxia,TTAGGC,ACAGTG,zebrafish,BenchVault\nS004,Mouse_placenta_rescue,TGACCA,GCCAAT,mouse_placenta,BenchVault\n",
         "primer_inventory.csv": "primer_id,target,sequence,tm_c,storage_box\nP001,IL6_F,ACTCACCTCTTCAGAACGAATTG,60.1,BOX-1\nP002,IL6_R,CCATCTTTGGAAGGTTCAGGTTG,60.4,BOX-1\n",
         "crispr_guides.tsv": "guide_id\tgene\tsequence\tpam\toff_target_review\nG001\tSTAT1\tGAGTACATGCTGACCCACAA\tGGG\tpass\nG002\tIRF1\tTCCACCTCTCACCAAGATCC\tAGG\treview_required\n",
         "elisa_plate_readout.csv": "well,standard_pg_ml,od450,od570_corrected\nA01,1000,2.110,2.010\nA02,500,1.532,1.432\nB01,,0.771,0.690\n",
         "nanodrop_export.csv": "sample,ng_ul,260_280,260_230,comment\nRNA_S001,512.4,2.05,2.21,excellent\nRNA_S002,288.1,1.97,1.83,cleanup optional\n",
         "cell_counter_export.csv": "sample,total_cells,viability_percent,dilution\nPBMC_S001,1480000,96.2,2\nPBMC_S002,1315000,91.8,2\n",
         "fastq_tiny_lane001.fastq": "@SEQ_ID_1\nGATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAAT\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n@SEQ_ID_2\nCTGATCGTAGCTAGCTAGGATCGATCGATCGATCGAA\n+\nIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n",
-        "reference_transcript.fa": ">NM_ELNLA_TEST cytokine response transcript\nATGGCTGCTGCTGAACTGACCTTGACCGAGGAGGACCTGAGCTTCCAGGACATG\n",
-        "gene_models.gff3": "##gff-version 3\nchrTest\tELNLA\tgene\t100\t950\t.\t+\t.\tID=gene0001;Name=ELNLA1\nchrTest\tELNLA\texon\t100\t220\t.\t+\t.\tParent=gene0001\n",
-        "construct_map.gb": "LOCUS       ELNLA_STORY     620 bp    DNA     circular SYN 14-MAY-2026\nFEATURES             Location/Qualifiers\n     promoter        1..100\n     misc_feature    101..160\n     CDS             161..520\nORIGIN\n        1 atggccattgtaatgggccgctgaaagggtgcccgacgaacgttactgacgactgacgac\n//\n",
+        "reference_transcript.fa": ">NM_BenchVault_TEST cytokine response transcript\nATGGCTGCTGCTGAACTGACCTTGACCGAGGAGGACCTGAGCTTCCAGGACATG\n",
+        "gene_models.gff3": "##gff-version 3\nchrTest\tBenchVault\tgene\t100\t950\t.\t+\t.\tID=gene0001;Name=BenchVault1\nchrTest\tBenchVault\texon\t100\t220\t.\t+\t.\tParent=gene0001\n",
+        "construct_map.gb": "LOCUS       BenchVault_STORY     620 bp    DNA     circular SYN 14-MAY-2026\nFEATURES             Location/Qualifiers\n     promoter        1..100\n     misc_feature    101..160\n     CDS             161..520\nORIGIN\n        1 atggccattgtaatgggccgctgaaagggtgcccgacgaacgttactgacgactgacgac\n//\n",
         "analysis_manifest.json": json.dumps(
             {
                 "run": run_slug,
@@ -719,8 +719,8 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
                 "expected_page_specific_attachments": len(page_blueprints()),
                 "expected_total_attachment_uploads": 97 + len(page_blueprints()),
                 "storage": {
-                    "primary": "example.org/project-storage/elnla/nichd-model-systems-storyline",
-                    "cold_archive": "s3://example-elnla-cold-archive/nichd-model-systems-storyline",
+                    "primary": "example.org/project-storage/benchvault/nichd-model-systems-storyline",
+                    "cold_archive": "s3://example-benchvault-cold-archive/nichd-model-systems-storyline",
                 },
             },
             indent=2,
@@ -741,10 +741,10 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         "cloud_storage_manifest.json": json.dumps(
             {
                 "links": [
-                    "https://example.org/elnla/nichd-model-systems-storyline/raw",
-                    "https://osf.io/example-elnla-placeholder/",
+                    "https://example.org/benchvault/nichd-model-systems-storyline/raw",
+                    "https://osf.io/example-benchvault-placeholder/",
                     "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE000000",
-                    "globus://example-endpoint/elnla/nichd-model-systems-storyline",
+                    "globus://example-endpoint/benchvault/nichd-model-systems-storyline",
                 ]
             },
             indent=2,
@@ -753,12 +753,12 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
             {"flags": ["low RNA yield S002", "review melt curve B17", "rerun flow compensation if PE spillover persists"]},
             indent=2,
         ),
-        "instrument_metadata.xml": "<instrument><name>QuantStudio 7 Flex</name><plate>384</plate><operator>ELNLA seed</operator><runMode>test-fixture</runMode></instrument>\n",
+        "instrument_metadata.xml": "<instrument><name>QuantStudio 7 Flex</name><plate>384</plate><operator>BenchVault seed</operator><runMode>test-fixture</runMode></instrument>\n",
         "microscope_metadata.ome.xml": "<OME><Image ID=\"Image:0\"><Pixels DimensionOrder=\"XYZCT\" Type=\"uint16\" SizeX=\"1024\" SizeY=\"1024\" SizeZ=\"1\" SizeC=\"3\" SizeT=\"1\"/></Image></OME>\n",
         "light_sheet_metadata.ome.xml": "<OME><Instrument ID=\"Instrument:Lightsheet\"><Microscope Manufacturer=\"Zeiss\" Model=\"Lightsheet Z.1\"/></Instrument><Image ID=\"Image:ZF-5dpf\"><Pixels DimensionOrder=\"XYZCT\" Type=\"uint16\" SizeX=\"2048\" SizeY=\"2048\" SizeZ=\"120\" SizeC=\"2\" SizeT=\"16\"/></Image></OME>\n",
         "mass_spec_method.xml": "<method><instrument>Orbitrap Exploris</instrument><ionization>ESI</ionization><polarity>positive-negative switching</polarity><column>C18 2.1x100mm</column><gradientMinutes>18</gradientMinutes></method>\n",
         "nmr_method.xml": "<nmr><instrument>Bruker AVANCE NEO</instrument><fieldMHz>600</fieldMHz><probe>TCI cryoprobe</probe><experiment>1H CPMG water suppression</experiment></nmr>\n",
-        "RunInfo.xml": "<RunInfo><Run Id=\"NICHD_STORY_RUN\"><Flowcell>ELNLA0001</Flowcell><Instrument>NextSeq2000</Instrument></Run></RunInfo>\n",
+        "RunInfo.xml": "<RunInfo><Run Id=\"NICHD_STORY_RUN\"><Flowcell>BenchVault0001</Flowcell><Instrument>NextSeq2000</Instrument></Run></RunInfo>\n",
         "RunParameters.xml": "<RunParameters><Read1>59</Read1><Index1>8</Index1><Index2>8</Index2><Read2>59</Read2><Chemistry>synthetic</Chemistry></RunParameters>\n",
         "interop_summary.csv": "metric,value,status\ncluster_density,188 K/mm2,pass\npercent_q30,92.6,pass\nindex_hopping,0.18,review\n",
         "developmental_stress_panel.mzML": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><mzML><run id=\"synthetic-lcms\"><spectrumList count=\"2\"><spectrum id=\"scan=1\"/><spectrum id=\"scan=2\"/></spectrumList></run></mzML>\n",
@@ -767,12 +767,12 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         "dls_autocorrelation_export.csv": "lag_us,g2_minus_1,fit_residual\n1,0.991,0.001\n10,0.782,-0.002\n100,0.311,0.004\n1000,0.042,-0.001\n",
         "qPCR_raw_run.EDS": deterministic_binary(4096, seed=42),
         "flow_panel_export.fcs": b"FCS3.1    58  210  211  420  421  421TEXT       $TOT/12/$PAR/4/$P1N/FSC-A/$P2N/SSC-A/$P3N/FITC-A/$P4N/PE-A/",
-        "light_sheet_stack_preview.ome.tiff": b"II*\x00\x08\x00\x00\x00ELNLA synthetic OME-TIFF preview payload\n",
+        "light_sheet_stack_preview.ome.tiff": b"II*\x00\x08\x00\x00\x00BenchVault synthetic OME-TIFF preview payload\n",
         "confocal_raw_placeholder.czi": b"ZISRAWFILE synthetic CZI placeholder for backup restore testing\n",
         "legacy_lif_placeholder.LIF": b"Leica LIF synthetic placeholder with uppercase extension\n",
         "bruker_nmr_raw_stub.zip": zip_bytes(
             {
-                "exp/10/acqus": "##TITLE=ELNLA synthetic NMR acquisition\n##$SFO1=600.13\n",
+                "exp/10/acqus": "##TITLE=BenchVault synthetic NMR acquisition\n##$SFO1=600.13\n",
                 "exp/10/pdata/1/procs": "##TITLE=processed synthetic spectrum\n##$SI=65536\n",
                 "README.txt": "Generated placeholder for Bruker-style directory restore testing.\n",
             }
@@ -781,7 +781,7 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         "README_NO_EXTENSION.txt": "LabArchives accepted no-extension files during testing, but the backup archive omitted those originals. The seed now uses a text suffix so full-size backup verification can pass while documenting the edge case.\n",
         "compound plate map (review copy).CSV": "well,compound,reason\nA01,CMPD0042,duplicate uppercase extension and spaces\n",
         "very_long_filename_for_hypoxia_interferon_developmental_stress_response_backup_restore_validation_attachment_20260514_version_0001.tsv": "field\tvalue\npurpose\tlong filename restore test\n",
-        "master_protocol.md": "# Master molecular biology protocol\n\n## Modules\n\n1. Cell thaw and rest\n2. LPS stimulation\n3. RNA extraction\n4. Library prep\n5. Bioinformatics handoff\n\nAll steps are generated test content for ELNLA backup verification.\n",
+        "master_protocol.md": "# Master molecular biology protocol\n\n## Modules\n\n1. Cell thaw and rest\n2. LPS stimulation\n3. RNA extraction\n4. Library prep\n5. Bioinformatics handoff\n\nAll steps are generated test content for BenchVault backup verification.\n",
         "program_timeline.md": "# Synthetic NICHD lab timeline\n\n"
         + "\n".join(f"- {year}: {event}" for year, event in PROGRAM_TIMELINE)
         + "\n\n"
@@ -798,7 +798,7 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
                         "cell_type": "markdown",
                         "metadata": {},
                         "source": [
-                            "# ELNLA NICHD model-systems stress analysis\n",
+                            "# BenchVault NICHD model-systems stress analysis\n",
                             "Join zebrafish, mouse, organoid, sequencing, chemical, and biophysical fixture data.\n",
                         ],
                     },
@@ -812,8 +812,8 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         ),
         "analysis_script.py": "from pathlib import Path\n\nfor path in Path('.').glob('*.csv'):\n    print(path.name)\n",
         "normalization.R": "counts <- read.delim('rna_seq_counts_matrix.tsv')\nprint(summary(counts))\n",
-        "warehouse_queries.sql": "select sample_id, freezer_box, position from aliquots where project = 'ELNLA_NICHD_STORYLINE';\n",
-        "workflow.yaml": "name: elnla-nichd-storyline-fixture\nsteps:\n  - fastqc\n  - multiqc\n  - salmon\n  - deseq2\n",
+        "warehouse_queries.sql": "select sample_id, freezer_box, position from aliquots where project = 'BenchVault_NICHD_STORYLINE';\n",
+        "workflow.yaml": "name: benchvault-nichd-storyline-fixture\nsteps:\n  - fastqc\n  - multiqc\n  - salmon\n  - deseq2\n",
         "animal_imaging_workflow.yaml": "name: model-organism-imaging-fixture\nsteps:\n  - import_ome_xml\n  - segment_embryos\n  - score_morphometry\n  - export_qc_tables\n",
         "biophysics_binding_workflow.yaml": "name: chemical-biophysics-fixture\nsteps:\n  - inspect_lc_ms_purity\n  - fit_spr_sensorgrams\n  - review_itc_heatmap\n  - compare_dls_stability\n",
         "plate_heatmap.png": plate_heatmap_png(),
@@ -821,8 +821,8 @@ def write_large_fixture_files(target: Path, run_slug: str) -> list[Tuple[Path, s
         "flow_gate_density.png": flow_density_png(),
         "western_blot_mock.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"420\" height=\"220\"><rect width=\"420\" height=\"220\" fill=\"#f7faf7\"/><rect x=\"45\" y=\"30\" width=\"36\" height=\"150\" fill=\"#111\"/><rect x=\"115\" y=\"70\" width=\"36\" height=\"90\" fill=\"#333\"/><rect x=\"185\" y=\"45\" width=\"36\" height=\"135\" fill=\"#111\"/><rect x=\"255\" y=\"95\" width=\"36\" height=\"62\" fill=\"#555\"/><text x=\"30\" y=\"205\" font-family=\"Arial\" font-size=\"18\">Mock western blot lanes</text></svg>\n",
         "gel_ladder_detailed.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"420\" height=\"220\"><rect width=\"420\" height=\"220\" fill=\"#101820\"/><g fill=\"#86efac\"><rect x=\"60\" y=\"35\" width=\"34\" height=\"8\"/><rect x=\"60\" y=\"60\" width=\"34\" height=\"8\"/><rect x=\"60\" y=\"92\" width=\"34\" height=\"8\"/><rect x=\"140\" y=\"70\" width=\"34\" height=\"8\"/><rect x=\"220\" y=\"55\" width=\"34\" height=\"8\"/><rect x=\"300\" y=\"105\" width=\"34\" height=\"8\"/></g><text x=\"25\" y=\"200\" fill=\"white\" font-family=\"Arial\" font-size=\"18\">Mock agarose gel with ladder</text></svg>\n",
-        "long_protocol_summary.pdf": minimal_pdf("ELNLA large protocol summary"),
-        "sample_chain_of_custody.pdf": minimal_pdf("ELNLA sample chain of custody"),
+        "long_protocol_summary.pdf": minimal_pdf("BenchVault large protocol summary"),
+        "sample_chain_of_custody.pdf": minimal_pdf("BenchVault sample chain of custody"),
     }
     captions = {
         "rna_seq_counts_matrix.tsv": "Large RNA-seq counts matrix",
@@ -1052,7 +1052,7 @@ def audit_header_html(page_title: str, focus: str, index: int, run_label: str) -
           <tr><td>Page index</td><td>{index:02d}</td></tr>
           <tr><td>Sample IDs</td><td>{html.escape(sample_ids)}</td></tr>
           <tr><td>Instrument / method</td><td>{html.escape(instrument)} / method DEVSTRESS-M{index:02d}</td></tr>
-          <tr><td>Raw data pointer</td><td>example.org/elnla/nichd-model-systems-storyline/raw/page-{index:02d}</td></tr>
+          <tr><td>Raw data pointer</td><td>example.org/benchvault/nichd-model-systems-storyline/raw/page-{index:02d}</td></tr>
           <tr><td>Analysis version</td><td>{html.escape(ANALYSIS_VERSION)}</td></tr>
           <tr><td>Review status</td><td>synthetic fixture, QA review required before scientific interpretation</td></tr>
           <tr><td>Page focus</td><td>{html.escape(page_title)} - {html.escape(focus)}</td></tr>
@@ -1079,7 +1079,7 @@ def rich_protocol_html(page_title: str, focus: str, index: int, run_label: str) 
         {audit_header_html(page_title, focus, index, run_label)}
         <p><strong>Program story:</strong> {html.escape(LAB_STORY)}</p>
         <p><strong>NICHD connection:</strong> {html.escape(NICHD_MISSION_NOTE)}</p>
-        <p><strong>Current page purpose:</strong> This generated entry stresses ELNLA with verbose, realistic lab content focused on {safe_focus}. It is organized like a long-running NIH notebook page: background, decision trail, protocol notes, sample context, instrument handoff, and preservation checks.</p>
+        <p><strong>Current page purpose:</strong> This generated entry stresses BenchVault with verbose, realistic lab content focused on {safe_focus}. It is organized like a long-running NIH notebook page: background, decision trail, protocol notes, sample context, instrument handoff, and preservation checks.</p>
         <h3>Continuity note</h3>
         <p><strong>{html.escape(milestone_year)}:</strong> {html.escape(milestone)}. This historical marker anchors the current test page in a believable decades-long lab record without using real study identifiers.</p>
         <h3>Protocol and decision module</h3>
@@ -1105,9 +1105,9 @@ def external_links_html(index: int) -> str:
     links = [
         ("NCBI GEO placeholder", "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE000000"),
         ("SRA Run Browser placeholder", "https://trace.ncbi.nlm.nih.gov/Traces/sra/?run=SRR000000"),
-        ("OSF project placeholder", "https://osf.io/example-elnla-placeholder/"),
-        ("Zenodo concept placeholder", "https://zenodo.org/communities/elnla-placeholder"),
-        ("Institutional storage placeholder", "https://example.org/elnla/storage/nichd-model-systems-storyline"),
+        ("OSF project placeholder", "https://osf.io/example-benchvault-placeholder/"),
+        ("Zenodo concept placeholder", "https://zenodo.org/communities/benchvault-placeholder"),
+        ("Institutional storage placeholder", "https://example.org/benchvault/storage/nichd-model-systems-storyline"),
     ]
     items = "\n".join(
         f'<li><a href="{html.escape(url)}">{html.escape(label)}</a> - recorded as non-secret test metadata link {index + offset}.</li>'
@@ -1167,7 +1167,7 @@ def add_verbose_page(uid: str, nbid: str, pid: str, page_title: str, focus: str,
     add_comment(
         uid,
         heading_eid,
-        f"ELNLA NICHD storyline seed {run_label}: page {index:02d} fits the model-systems lab narrative. Comment capture is included in the LabArchives backup payload; viewer rendering support should be verified separately.",
+        f"BenchVault NICHD storyline seed {run_label}: page {index:02d} fits the model-systems lab narrative. Comment capture is included in the LabArchives backup payload; viewer rendering support should be verified separately.",
     )
     add_entry(uid, nbid, pid, "text entry", rich_protocol_html(page_title, focus, index, run_label))
     entries += 1
@@ -1315,7 +1315,7 @@ def main() -> int:
                 f"Uploaded {attachment_count}/{len(fixtures) + len(page_fixtures)} attachments."
             )
 
-    output = LOCAL / "elnla_integration_notebook.tsv"
+    output = LOCAL / "benchvault_integration_notebook.tsv"
     with output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t")
         writer.writerow(["kind", "notebook_name", "nbid", "item_path", "item_id", "run_label"])

@@ -22,11 +22,11 @@ const _nihSurface = Color(0xfffbfcfd);
 const _nihSuccess = Color(0xff0f6460);
 
 void main() {
-  runApp(const ElnlaApp());
+  runApp(const BenchVaultApp());
 }
 
-class ElnlaApp extends StatelessWidget {
-  const ElnlaApp({super.key});
+class BenchVaultApp extends StatelessWidget {
+  const BenchVaultApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +48,7 @@ class ElnlaApp extends StatelessWidget {
         );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'ELNLA',
+      title: 'BenchVault',
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
@@ -72,19 +72,19 @@ class ElnlaApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const ElnlaHome(),
+      home: const BenchVaultHome(),
     );
   }
 }
 
-class ElnlaHome extends StatefulWidget {
-  const ElnlaHome({super.key});
+class BenchVaultHome extends StatefulWidget {
+  const BenchVaultHome({super.key});
 
   @override
-  State<ElnlaHome> createState() => _ElnlaHomeState();
+  State<BenchVaultHome> createState() => _BenchVaultHomeState();
 }
 
-class _ElnlaHomeState extends State<ElnlaHome> {
+class _BenchVaultHomeState extends State<BenchVaultHome> {
   late final BackupService _service;
   Future<void>? _loader;
   List<NotebookSummary> _notebooks = const [];
@@ -205,7 +205,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
         minutesAfterMidnight: 7 * 60 + 30,
         weekday: DateTime.monday,
       );
-      _backupRootPath = 'ELNLA_Backups';
+      _backupRootPath = 'BenchVault_Backups';
       _notebooks = const [
         NotebookSummary(
           name: 'Demo Immunology Notebook',
@@ -695,7 +695,7 @@ class _ElnlaHomeState extends State<ElnlaHome> {
       builder: (context, snapshot) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('ELNLA'),
+            title: const Text('BenchVault'),
             centerTitle: false,
             actions: [
               IconButton(
@@ -828,9 +828,10 @@ class _ElnlaHomeState extends State<ElnlaHome> {
   }
 }
 
-bool get _demoMode => Platform.environment['ELNLA_DEMO_MODE'] == '1';
+bool get _demoMode => Platform.environment['BENCHVAULT_DEMO_MODE'] == '1';
 
-bool get _demoSearchMode => Platform.environment['ELNLA_DEMO_SEARCH'] == '1';
+bool get _demoSearchMode =>
+    Platform.environment['BENCHVAULT_DEMO_SEARCH'] == '1';
 
 NotebookSearchResult _demoOpenAiSearchResult() {
   const query =
@@ -2298,7 +2299,7 @@ class _AttachmentSupportBadge extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              support.elnlaSupport,
+              support.benchvaultSupport,
               style: textTheme.bodySmall?.copyWith(
                 color: colors.onPrimaryContainer,
               ),
@@ -2582,8 +2583,8 @@ class _AttachmentPreviewHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = support.labArchivesDirectView
-        ? '${support.labArchivesSupport} ${support.elnlaSupport}'
-        : support.elnlaSupport;
+        ? '${support.labArchivesSupport} ${support.benchvaultSupport}'
+        : support.benchvaultSupport;
     return _AttachmentPreviewMessage(message: message);
   }
 }

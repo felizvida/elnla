@@ -1,8 +1,8 @@
-![ELNLA banner](docs/assets/elnla-banner.svg)
+![BenchVault banner](docs/assets/benchvault-banner.svg)
 
-# ELNLA
+# BenchVault
 
-ELNLA is a macOS-first LabArchives GOV backup and read-only viewer for
+BenchVault is a macOS-first LabArchives GOV backup and read-only viewer for
 electronic lab notebooks. It helps eligible notebook owners preserve the
 full-size LabArchives archive, verify original attachment files, and browse
 backed-up notebooks without writing anything back to LabArchives.
@@ -11,16 +11,16 @@ backed-up notebooks without writing anything back to LabArchives.
 
 At NIH and NICHD, lab notebook owners are lab chiefs/PIs. LabArchives full-size
 notebook backup is owner-only: users who can view a notebook are not necessarily
-allowed to download its full-size backup archive. ELNLA makes that rule visible
+allowed to download its full-size backup archive. BenchVault makes that rule visible
 in the app and in the documentation so backup failures are easier to understand.
 
 ## Screenshots
 
-![ELNLA AI notebook search](docs/assets/screenshots/elnla-ai-search.png)
+![BenchVault AI notebook search](docs/assets/screenshots/benchvault-ai-search.png)
 
-![ELNLA read-only viewer](docs/assets/screenshots/elnla-viewer.png)
+![BenchVault read-only viewer](docs/assets/screenshots/benchvault-viewer.png)
 
-![ELNLA automatic backup schedule](docs/assets/screenshots/elnla-schedule.png)
+![BenchVault automatic backup schedule](docs/assets/screenshots/benchvault-schedule.png)
 
 ## What It Does
 
@@ -72,12 +72,12 @@ Current status:
 ```text
 docs/
   assets/
-    elnla-banner.svg
+    benchvault-banner.svg
     screenshots/
   developer/
     labarchives_gov_api_reference.md
   user/
-    ELNLA_Quickstart.pdf
+    BenchVault_Quickstart.pdf
     quickstart.md
 lib/
   main.dart
@@ -89,7 +89,7 @@ tool/
 
 ## Documentation
 
-- [Quickstart PDF](docs/user/ELNLA_Quickstart.pdf)
+- [Quickstart PDF](docs/user/BenchVault_Quickstart.pdf)
 - [Quickstart source](docs/user/quickstart.md)
 - [LabArchives GOV API working reference](docs/developer/labarchives_gov_api_reference.md)
 - [Documentation index](docs/README.md)

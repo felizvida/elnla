@@ -34,7 +34,7 @@ class BackupService {
   File get _notebooksFile => File(_join(credentialsDir.path, 'notebooks.tsv'));
 
   File get _settingsFile =>
-      File(_join(credentialsDir.path, 'elnla_settings.json'));
+      File(_join(credentialsDir.path, 'benchvault_settings.json'));
 
   File get _openAiSearchFile => File(_join(credentialsDir.path, 'openai.env'));
 
@@ -703,7 +703,7 @@ class BackupService {
     );
     return {
       'version': 1,
-      'kind': 'elnla.backup.integrity',
+      'kind': 'benchvault.backup.integrity',
       'algorithm': 'sha256',
       'backupId': record.id,
       'notebookName': record.notebookName,
@@ -771,7 +771,7 @@ class BackupService {
     }
     final entry = <String, Object?>{
       'version': 1,
-      'kind': 'elnla.integrity.ledger',
+      'kind': 'benchvault.integrity.ledger',
       'backupId': record.id,
       'notebookName': record.notebookName,
       'backupCreatedAt': record.createdAt.toIso8601String(),
@@ -892,7 +892,7 @@ class BackupService {
       }
       request.response.headers.contentType = ContentType.text;
       request.response.write(
-        'LabArchives authorization captured. You can return to ELNLA.',
+        'LabArchives authorization captured. You can return to BenchVault.',
       );
       await request.response.close();
       return uri.queryParameters;
@@ -1276,7 +1276,7 @@ class BackupService {
 }
 
 Directory _findProjectRoot() {
-  final configuredRoot = Platform.environment['ELNLA_PROJECT_ROOT'];
+  final configuredRoot = Platform.environment['BENCHVAULT_PROJECT_ROOT'];
   if (configuredRoot != null && configuredRoot.trim().isNotEmpty) {
     return Directory(configuredRoot).absolute;
   }
@@ -1304,10 +1304,10 @@ Directory _findProjectRoot() {
   if (home != null && home.isNotEmpty) {
     if (Platform.isMacOS) {
       return Directory(
-        _join(home, 'Library', 'Application Support', 'ELNLA'),
+        _join(home, 'Library', 'Application Support', 'BenchVault'),
       ).absolute;
     }
-    return Directory(_join(home, '.elnla')).absolute;
+    return Directory(_join(home, '.benchvault')).absolute;
   }
   return Directory.current.absolute;
 }
