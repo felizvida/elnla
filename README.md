@@ -130,6 +130,10 @@ and iPad support still need platform validation. See the
 [implementation limitations](docs/implementation_limitations.md) for the full
 list.
 
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
+
 ## Local-Only Data Rules
 
 - Use paths relative to the project root in tracked files.
