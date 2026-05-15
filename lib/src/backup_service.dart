@@ -2119,8 +2119,9 @@ class BackupService {
 
   Future<File> _resolveBackupFile(String path) async {
     final safePath = _safeBackupMetadataPath(path);
+    final localPath = _localPathFromPortable(safePath);
     final isLegacyProjectBackup = _isLegacyProjectBackupPath(safePath);
-    final rootFile = File(_join(root.path, safePath));
+    final rootFile = File(_join(root.path, localPath));
     if (isLegacyProjectBackup) {
       final legacyFile = await _existingContainedBackupFile(
         rootFile,
@@ -2131,7 +2132,7 @@ class BackupService {
       }
     }
     for (final directory in await _backupSearchDirs()) {
-      final candidate = File(_join(directory.path, safePath));
+      final candidate = File(_join(directory.path, localPath));
       final contained = await _existingContainedBackupFile(
         candidate,
         directory.absolute,
@@ -2144,7 +2145,7 @@ class BackupService {
       return rootFile;
     }
     final searchDirs = await _backupSearchDirs();
-    return File(_join(searchDirs.first.path, safePath));
+    return File(_join(searchDirs.first.path, localPath));
   }
 
   Future<File?> _existingContainedBackupFile(
@@ -2168,7 +2169,11 @@ class BackupService {
       emptyMessage: 'Backup metadata path is empty.',
       absoluteMessage: 'Backup metadata paths must be relative.',
       traversalMessage: 'Backup metadata path escapes the backup folder.',
-    ).join(Platform.pathSeparator);
+    ).join('/');
+  }
+
+  String _localPathFromPortable(String path) {
+    return _portablePathSegments(path).join(Platform.pathSeparator);
   }
 
   List<String> _safeRelativePathSegments(
@@ -2211,15 +2216,24 @@ class BackupService {
   }
 
   bool _pathIsWithinOrSame(String childPath, String parentPath) {
-    final child = File(childPath).absolute.path;
-    final parent = Directory(parentPath).absolute.path;
+    final child = _pathForContainment(childPath, isDirectory: false);
+    final parent = _pathForContainment(parentPath, isDirectory: true);
     if (child == parent) {
       return true;
     }
-    final prefix = parent.endsWith(Platform.pathSeparator)
-        ? parent
-        : '$parent${Platform.pathSeparator}';
+    final separator = Platform.isWindows ? r'\' : Platform.pathSeparator;
+    final prefix = parent.endsWith(separator) ? parent : '$parent$separator';
     return child.startsWith(prefix);
+  }
+
+  String _pathForContainment(String path, {required bool isDirectory}) {
+    final normalized = isDirectory
+        ? Directory(path).absolute.path
+        : File(path).absolute.path;
+    if (!Platform.isWindows) {
+      return normalized;
+    }
+    return normalized.replaceAll('/', r'\').toLowerCase();
   }
 
   Future<bool> _resolvedPathIsWithinOrSame(
@@ -2470,17 +2484,23 @@ class BackupService {
     final normalizedPath = File(path).absolute.path;
     if (_pathIsWithinOrSame(normalizedPath, normalizedBase)) {
       final relative = normalizedPath.substring(normalizedBase.length);
-      return relative.startsWith(Platform.pathSeparator)
+      final trimmed = relative.startsWith(Platform.pathSeparator)
           ? relative.substring(1)
           : relative;
+      return _portableRelativePath(trimmed);
     }
     if (_pathIsWithinOrSame(normalizedPath, normalizedRoot)) {
       final relative = normalizedPath.substring(normalizedRoot.length);
-      return relative.startsWith(Platform.pathSeparator)
+      final trimmed = relative.startsWith(Platform.pathSeparator)
           ? relative.substring(1)
           : relative;
+      return _portableRelativePath(trimmed);
     }
     throw StateError('Path is outside BenchVault-managed roots.');
+  }
+
+  String _portableRelativePath(String path) {
+    return _portablePathSegments(path).join('/');
   }
 
   String _timestamp() {

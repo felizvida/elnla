@@ -302,11 +302,19 @@ class ReadableNotebookExporter {
     final normalizedPath = File(path).absolute.path;
     if (normalizedPath.startsWith(normalizedBase)) {
       final relative = normalizedPath.substring(normalizedBase.length);
-      return relative.startsWith(Platform.pathSeparator)
+      final trimmed = relative.startsWith(Platform.pathSeparator)
           ? relative.substring(1)
           : relative;
+      return _portableRelativePath(trimmed);
     }
     return path;
+  }
+
+  String _portableRelativePath(String path) {
+    return path
+        .split(RegExp(r'[\\/]+'))
+        .where((segment) => segment.isNotEmpty)
+        .join('/');
   }
 }
 

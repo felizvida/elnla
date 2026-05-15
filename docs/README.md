@@ -29,7 +29,7 @@ ignored folders.
 - `developer/reference_project_lessons.md`: local-only reference project lessons
   and the BenchVault guardrails for borrowing those ideas.
 - `releases/`: tracked release notes used for GitHub release entries.
-  Latest local notes: `releases/v1.0.6.md`.
+  Latest local notes: `releases/v1.0.7.md`.
 - Backup reader/search sidecars are generated locally under each backup run in
   `readable/`; they are not tracked repository documents.
 

@@ -167,9 +167,9 @@ python3 scripts/labarchives_auth_flow.py --email your.email@example.gov --open-b
 dart run tool/backup_once.dart
 python3 tool/build_quickstart_pdf.py
 scripts/release_smoke_check.sh
-scripts/package_macos_release.sh 1.0.6
-pwsh scripts/package_windows_release.ps1 1.0.6
-scripts/package_ipados_validation.sh 1.0.6
+scripts/package_macos_release.sh 1.0.7
+pwsh scripts/package_windows_release.ps1 1.0.7
+scripts/package_ipados_validation.sh 1.0.7
 ```
 
 Release automation:
