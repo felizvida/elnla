@@ -383,6 +383,45 @@ Inventory item body fields seen in create/update examples:
 - Page 206, `POST /public/v1/orders/{labOrderId}/receive`, appears truncated in the PDF itself. It ends around `"notes": "Th`.
 - `pdfimages -list` reported only a few images; the document is mostly text with a usable text layer.
 
+## Programming Tips And Traps
+
+Keep this section practical. These are implementation notes that prevent future coding sessions from rediscovering already solved details.
+
+### Attachment Handling
+
+- Use `notebooks::notebook_backup` as the preservation source of truth. `entries::entry_attachment` downloads one current entry file; it is useful for targeted access but is not a replacement for a full notebook backup.
+- Request backups with `json=true` and omit `no_attachments=true`. Passing `no_attachments=true` produces a lighter archive but breaks ELNLA's evidence and restore goals because full-size original payloads are absent.
+- Attachment metadata is in `extracted/notebook/entry_parts.json`. Rows may be wrapped as `{ "entry_part": { ... } }`, so parse wrapped and unwrapped shapes. Important fields are `id`, `entry_id`, `relative_position`, `entry_data`, `attach_file_name`, `attach_file_size`, and `attach_content_type`.
+- For attachment parts, `entry_data` is the caption or surrounding note, not the file contents. Render it as text near the attachment card, but never treat it as the payload.
+- Original payloads have been observed under `extracted/notebook/attachments/<entry-part-id>/<version>/original/<filename>`, usually with version `1`. Code should first try the direct path, then recursively search under the entry-part attachment directory for a matching filename inside an `original` segment. This protects the viewer if LabArchives changes the version directory or nesting.
+- Verify every non-empty `attach_file_name` before marking a backup complete: locate the original payload, compare byte count against `attach_file_size`, and write SHA-256 plus relative path into `original_files_manifest.json`.
+- Fail and discard the partial notebook run if original verification is incomplete. A backup that silently misses originals is worse than no backup because it can mislead the user about preservation quality.
+- Store attachment paths relative to the selected backup root in `render_notebook.json`, `readable/notebook.md`, `search_chunks.jsonl`, and manifests. Do not store machine-specific absolute paths in tracked docs, render sidecars, or GitHub-visible examples.
+- Restore means copying the backed-up original payload to a user-selected folder, not opening or modifying the backup in place. Sanitize path separators and control characters from attachment names, then add suffixes such as `name (1).ext` to avoid overwriting existing files.
+- After restore, compare the copied file size to the backup metadata and delete the restored copy if the size does not match. This catches interrupted copies and path-resolution mistakes.
+- Filename edge case observed on May 14, 2026: LabArchives accepted no-extension uploads, but the full notebook backup omitted their `original/` payloads. Keep test fixtures extension-bearing unless deliberately testing that failure mode.
+
+### Backup And Viewer Data Flow
+
+- Backup flow: download `notebook.7z`, extract to `extracted/`, parse JSON tables into `render_notebook.json`, verify originals into `original_files_manifest.json`, write readable/search sidecars, then seal integrity.
+- Viewer flow should prefer `render_notebook.json` for speed and consistency. If older records lack attachment original paths, resolve from the render file's run directory using the observed `extracted/notebook/attachments/<part-id>/.../original/<filename>` pattern.
+- `readable/notebook.md` is for human and model-readable review. It should include page paths, part IDs, attachment names, metadata, relative original payload paths, and comments.
+- `readable/search_chunks.jsonl` is for natural-language search. Keep each chunk bounded in size and include attachment summary strings so users can ask for records by assay type, instrument file name, or payload format.
+- Keep faithful archives and readable sidecars separate. The `.7z` archive plus extracted originals are the preservation copy; Markdown/JSONL are convenience indexes generated from the backup.
+
+### Parsing And Rendering
+
+- The JSON export is table-like. Build maps by IDs rather than assuming file order: `tree_nodes.json` defines notebook structure, `entries.json` links pages to entries, `entry_parts.json` holds ordered parts, and `comments.json` links comments to `entry_part_id`.
+- Sort entry parts by `relative_position` before rendering. Sort comments by creation time so the read-only view matches normal notebook reading order.
+- Rich text can contain links. Convert anchors to `label (URL)` before stripping remaining HTML so external data-storage links are not lost.
+- Treat unknown part types conservatively: preserve the part ID, label it as an unknown entry part, and render any text that can be safely extracted.
+
+### Integrity And Evidence
+
+- Integrity sealing is tamper-evidence, not legal certification. Hash every protected run file except the integrity manifest itself, then record the manifest hash in the ignored local ledger.
+- The viewer should warn loudly if any protected file changes after backup. Do not attempt to repair or normalize protected files during verification because that would change the evidence surface.
+- Keep credentials, UID files, OpenAI keys, source PDFs, raw downloaded notebooks, and integrity ledgers in ignored local paths. Only placeholder templates and relative-path examples belong in Git.
+
 ## Living Implementation Notes
 
 Append notes here as coding work reveals practical behavior.
